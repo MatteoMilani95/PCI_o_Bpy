@@ -1,5 +1,5 @@
 # PCI_o_B
- DSHpy is a python package developed to Analyze DSH videos computing correlation maps from MIfiles and velocity maps from correlation maps
+ PCI_o_B is a python package developed to Analyze CI files
  
 
 ## Setup
