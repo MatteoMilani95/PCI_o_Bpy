@@ -4,7 +4,7 @@ from setuptools import setup
 setup(name='PCI_o_B',
       version='0.1',
       description='Analyze speckle fields, compute correlations, derive motion maps',
-      url='https://github.com/MatteoMilani95/PCI_on_B',
+      url='https://github.com/MatteoMilani95/PCI_on_Bpy',
       author='Matteo Milani',
       author_email='matteo.milani@umontpellier.fr',
       license='GNU GPL',
