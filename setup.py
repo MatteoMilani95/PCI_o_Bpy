@@ -15,8 +15,7 @@ setup(name='PCI_o_B',
             'configparser',
             'pynverse',
             'IPython',
-            'pandas',
-            'os'
+            'pandas'
       ], 
       #NOTE: other modules optionally used: emcee
       #      - emcee (VelMaps)
