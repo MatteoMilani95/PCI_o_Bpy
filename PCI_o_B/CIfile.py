@@ -346,7 +346,7 @@ class CIbead(CIfile):
         h = []
         
         for i in range(len(self.ROI_x_pos)):
-            inner_h,scattering_angle=theta1_func(self.ROI_x_pos[i],Radius,self.indexrefbead,self.indexrefext)
+            inner_h,scattering_angle=sf.theta1_func(self.ROI_x_pos[i],Radius,self.indexrefbead,self.indexrefext)
             h.append(inner_h)
             self.scatt_angle.append(scattering_angle*360/(2*math.pi))
                 
