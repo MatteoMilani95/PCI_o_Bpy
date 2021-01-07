@@ -64,6 +64,9 @@ class CIfile():
         self.g2var = []
         self.g2decaytime = []
         
+        
+        self.magnification = 0
+        
         #self.Input_101 =[]
     def __repr__(self): 
         return '<ROI: fn%s>' % (self.FolderName)
@@ -258,12 +261,13 @@ class CIfile():
         
   
         
-    def LoadCI(self, FolderName,lagtime):
+    def LoadCI(self, FolderName,lagtime,magnification):
         #This method automatically call the method LoadInput_101_CalCI(), 
         #and the load the CI files for each ROI
         
         self.FolderName = FolderName
         self.lag = lagtime
+        self.magnification = magnification
         self.LoadInput_101_CalCI()
         
         ROI_name_list=list()
@@ -287,6 +291,19 @@ class CIfile():
                         
         return
     
+    def CIShow(self,which_ROI):
+        
+        plt.figure() 
+        for i in range(len(self.CI[0].columns)):
+            if self.CI[0].columns[i].startswith('d'):
+                self.CI[which_ROI-1].plot(y=self.CI[0].columns[i])
+        print(len(self.CI[0].columns))
+        plt.xlabel('tau  [s]')
+        plt.ylabel('g2-1')
+        plt.title('g2_ROI'+str(which_ROI).zfill(4))
+
+        return
+    
     
 
 
@@ -302,7 +319,6 @@ class CIbead(CIfile):
         self.scatt_angle = []
         self.scatt_angle_exp = []
         self.Center = 0
-        self.magnification = 2.15/357
         self.wavelength = wavelength
         self.indexrefbead = n1
         self.indexrefext = n2

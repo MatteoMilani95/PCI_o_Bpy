@@ -31,8 +31,10 @@ class G2():
         self.scatt_angle = []
         self.scatt_angle_exp = []
         self.Center = 0
-        self.decaytime = []
-        self.decaytimeerr = []
+        self.decaytime1 = []
+        self.decaytime1err = []
+        self.decaytime2 = []
+        self.decaytime2err = []
         
     def __str__(self):
         str_res  = '\n|---------------|'
@@ -108,8 +110,8 @@ class G2():
              
     
         for i in range(self.nROI):
-            self.decaytime.append(outparam[i][0][1])
-            self.decaytimeerr.append(2*np.sqrt(outparam[i][1][1][1]))
+            self.decaytime1.append(outparam[i][0][1])
+            self.decaytime1err.append(2*np.sqrt(outparam[i][1][1][1]))
         
         goodness_fit = [] 
         for i in range(self.nROI):
@@ -150,8 +152,10 @@ class G2():
              
     
         for i in range(self.nROI):
-            self.decaytime.append(outparam[i][0][1])
-            self.decaytimeerr.append(2*np.sqrt(outparam[i][1][1][1]))
+            self.decaytime1.append(outparam[i][0][1])
+            self.decaytime1err.append(2*np.sqrt(outparam[i][1][1][1]))
+            self.decaytime2.append(outparam[i][0][3])
+            self.decaytime2err.append(2*np.sqrt(outparam[i][1][3][3]))
         
         goodness_fit = [] 
         for i in range(self.nROI):
@@ -174,49 +178,6 @@ class G2():
         
         return
     
-
-    def FitDoubleDecaytime(self,func,variables,plot):
-            
-            fitted_curve = []
-            
-            outparam = self.fitG2(func,variables)
-            
-            folder_fit_graphs = self.FolderName + '\\fit_graphs'
-            
-            try:
-                os.mkdir(folder_fit_graphs)
-            except FileExistsError:
-                print('directory already existing, graphs will be uploaded')
-            
-            for i in range(self.nROI):
-                 fitted_curve.append(func( np.asarray(self.tau), outparam[i][0][0], outparam[i][0][1], outparam[i][0][2], outparam[i][0][3], outparam[i][0][4]))
-                 
-        
-            for i in range(self.nROI):
-                self.decaytime.append(outparam[i][0][1])
-                self.decaytimeerr.append(2*np.sqrt(outparam[i][1][1][1]))
-            
-            goodness_fit = [] 
-            for i in range(self.nROI):
-                goodness_fit.append( np.sum( ( ( np.asarray(fitted_curve[i])-np.asarray(self.g2[i]))  )**2 / np.asarray(fitted_curve[i]) ) )
-        
-            if plot == True:
-                for i in range(self.nROI):
-                    plt.figure() 
-                    plt.xscale('log')
-                    plt.errorbar(self.tau,self.g2[i],yerr=self.g2var[i],fmt='o',label='chi = ' + str(goodness_fit[i]))
-                    plt.plot(self.tau,fitted_curve[i],'-.')
-                    plt.xlabel('tau  [s]')
-                    plt.ylabel('g2-1')
-                    plt.title('g2_ROI'+str(i+1).zfill(4))
-                    plt.legend(loc='upper right')
-                    #plt.grid(True)
-                    plt.savefig(folder_fit_graphs+'\\g2_ROI'+str(i+1).zfill(4)+'.png')
-            else:
-                return
-            
-            return
-
 
     
     def G2Show(self,which_ROI):
