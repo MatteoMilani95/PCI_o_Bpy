@@ -121,12 +121,12 @@ class G2():
             for i in range(self.nROI):
                 plt.figure() 
                 plt.xscale('log')
-                plt.errorbar(self.tau,self.g2[i],yerr=self.g2var[i],fmt='o',label='chi = ' + str(goodness_fit[i]))
+                plt.errorbar(self.tau,self.g2[i],yerr=self.g2var[i],fmt='o',label='chi = ' + str(goodness_fit[i]) + '\n' + 'baseline = ' + str(outparam[i][0][2]) + '\n' + 'decaytime = ' + str(outparam[i][0][1]))
                 plt.plot(self.tau,fitted_curve[i],'-.')
                 plt.xlabel('tau  [s]')
                 plt.ylabel('g2-1')
                 plt.title('g2_ROI'+str(i+1).zfill(4))
-                plt.legend(loc='upper right')
+                plt.legend(loc='lower left')
                 #plt.grid(True)
                 plt.savefig(folder_fit_graphs+'\\g2_ROI'+str(i+1).zfill(4)+'.png')
         else:
@@ -165,7 +165,7 @@ class G2():
             for i in range(self.nROI):
                 plt.figure() 
                 plt.xscale('log')
-                plt.errorbar(self.tau,self.g2[i],yerr=self.g2var[i],fmt='o',label='chi = ' + str(goodness_fit[i]))
+                plt.errorbar(self.tau,self.g2[i],yerr=self.g2var[i],fmt='o',label='chi = ' + str(goodness_fit[i]) + '\n' + 'baseline = ')
                 plt.plot(self.tau,fitted_curve[i],'-.')
                 plt.xlabel('tau  [s]')
                 plt.ylabel('g2-1')

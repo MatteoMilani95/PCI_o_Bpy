@@ -24,7 +24,6 @@ def theta1_func(H_value,R,n1,n2):
     return h,theta_scattering
 
 
-
 def SingExp(x, amp, decay, baseline ):
     """Model a decaying sine wave and subtract data."""   
     
