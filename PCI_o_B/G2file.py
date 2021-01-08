@@ -57,10 +57,11 @@ class G2():
         g2=[]
         var=[]
         for i in range(self.nROI):
-            g2.append(self.CI[i].mean(axis = 0)) 
-            var.append(self.CI[i].var(axis = 0)) 
+            g2.append(self.CI[i].mean(axis = 0))
+            var.append(self.CI[i].var(axis = 0))
         remove_nan = []
         remove_nan_v = []
+        bho = []
         
         for i in range(self.nROI):
             nan_elems = g2[i].isnull()
@@ -68,13 +69,23 @@ class G2():
             remove_nan.append(g2[i][~nan_elems])
             remove_nan_v.append(var[i][~nan_elems_v])
             
+            a = pd.Series([0],index=[remove_nan[i].index[-1]])
+            if len(remove_nan_v[i])<len(remove_nan[i]):
+                remove_nan_v[i] = remove_nan_v[i].append(a)
+            bho.append(remove_nan_v[i].replace(0,remove_nan_v[i][2:].max(axis=0) ))
+        
         
         for i in range(self.nROI):
             self.g2.append(remove_nan[i][2:])
             #self.g2 = [x for x in self.g2 if str(x) != 'nan']
-            self.g2var.append(remove_nan_v[i][2:])
-       
+            self.g2var.append(bho[i][2:])
             
+            
+        '''    
+        for i in range(self.nROI):
+            for j in range(len(self.g2var[i])):
+               print(self.g2var[i])
+        '''    
         while len(self.tau)>len(self.g2[0]):
             self.tau.pop()
             

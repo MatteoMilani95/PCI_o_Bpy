@@ -14,6 +14,7 @@ get_ipython().magic('reset -sf')
 import pandas as pd
 from scipy.optimize import leastsq, least_squares, curve_fit
 import os
+import re
 
 from PCI_o_B import SharedFunctions as sf
 
@@ -261,7 +262,7 @@ class CIfile():
         
   
         
-    def LoadCI(self, FolderName,lagtime,magnification):
+    def LoadCI(self, FolderName,lagtime,magnification,Timepulse = False):
         #This method automatically call the method LoadInput_101_CalCI(), 
         #and the load the CI files for each ROI
         
@@ -270,33 +271,101 @@ class CIfile():
         self.magnification = magnification
         self.LoadInput_101_CalCI()
         
-        ROI_name_list=list()
+        if Timepulse == False:
+            
+            ROI_name_list=list()
+            
+            for i in range(self.nROI):
+                ROI_name_list.append(str(1 + i).zfill(self.cI_file_digits))
+                self.ROIfilelist.append(self.filename + ROI_name_list[i]+ self.extension) 
+                self.FileList.append(self.FolderName + '\\' + self.filename + ROI_name_list[i] + self.extension)
+                
+            for i in range(self.nROI):
+                self.CI.append(pd.read_csv(self.FileList[i], sep='\\t', engine='python'))
+            
+            
+            # get the tau list starting from the lag time
+            for i in range(len(self.CI[0].columns)):
+                if self.CI[0].columns[i].startswith('d'):
+                    for char in self.CI[0].columns[i].split('d'):
+                        if char.isdigit():
+                            self.tau.append(float(char)*self.lag)
+            return
+                            
+        else:
+            
+            
+            self.TimepulseOraganization()
+            
+            return
         
-        for i in range(self.nROI):
-            ROI_name_list.append(str(1 + i).zfill(self.cI_file_digits))
-            self.ROIfilelist.append(self.filename + ROI_name_list[i]+ self.extension) 
-            self.FileList.append(self.FolderName + '\\' + self.filename + ROI_name_list[i] + self.extension)
+        return
+    
+    
+    def TimepulseOraganization(self):
+        ROI_name_list=list()
+        CIlong = []
+        filenamelong = 'longtcI'
+        extension = '.dat'
             
         for i in range(self.nROI):
-            self.CI.append(pd.read_csv(self.FileList[i], sep='\\t', engine='python'))
+            ROI_name_list.append(str(1 + i).zfill(self.cI_file_digits))
+            self.ROIfilelist.append(filenamelong + ROI_name_list[i]+ self.extension) 
+            self.FileList.append(self.FolderName + '\\' + filenamelong + ROI_name_list[i] + extension)
+                
+        for i in range(self.nROI):
+            CIlong.append(pd.read_csv(self.FileList[i], sep='\\t', engine='python'))
+            
+        ROI_name_list=list()
+        CIshort = []
+        filenameshort = 'shorttcI'
+        extension = '.dat'
+            
+        for i in range(self.nROI):
+            ROI_name_list.append(str(1 + i).zfill(self.cI_file_digits))
+            self.ROIfilelist.append(filenameshort + ROI_name_list[i]+ self.extension) 
+            self.FileList.append(self.FolderName + '\\' + filenameshort + ROI_name_list[i] + extension)
+                
+        for i in range(self.nROI):
+            CIshort.append(pd.read_csv(self.FileList[self.nROI + i], sep='\\t', engine='python'))
+            
+        CIall = []
+        cibho = []
+        for i in range(self.nROI):    
+            CIall.append(CIshort[i].merge(CIlong[i], how='outer', on = 'tsec', suffixes=('short', '')))
+            CIall[i].set_index(CIlong[i].index, inplace=True)
+            CIall[i].sort_values(by=['tsec'], inplace=True)
+            CIall[i].drop(columns=['I', 'd0'])
+            cibho.append(CIall[i].drop(columns=['I', 'd0']))
+            
+            
+        self.CI = cibho
         
-        
-        # get the tau list starting from the lag time
         for i in range(len(self.CI[0].columns)):
-            if self.CI[0].columns[i].startswith('d'):
-                for char in self.CI[0].columns[i].split('d'):
-                    if char.isdigit():
-                        self.tau.append(float(char)*self.lag)
+                if self.CI[0].columns[i].startswith('usec'):
+                    for char in self.CI[0].columns[i].split('usec'):
+                        if char.isdigit():
+                            self.tau.append(float(char)*self.lag*10**-6)
+            
+        for i in range(len(self.CI[0].columns)):
+                if self.CI[0].columns[i].startswith('sec'):
+                    for char in self.CI[0].columns[i].split('sec'):
+                        try:
+                            self.tau.append(float(char)*self.lag)
+                        except ValueError:
+                            a = 0 
+            
+                            
         
-                        
-        return
+        
+        return 
     
     def CIShow(self,which_ROI):
         
         plt.figure() 
         for i in range(len(self.CI[0].columns)):
             if self.CI[0].columns[i].startswith('d'):
-                self.CI[which_ROI-1].plot(y=self.CI[0].columns[i])
+                self.CI[which_ROI-1].plot(y=self.CI[0].columns[i],marker='.')
         print(len(self.CI[0].columns))
         plt.xlabel('tau  [s]')
         plt.ylabel('g2-1')

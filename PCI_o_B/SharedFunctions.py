@@ -39,6 +39,13 @@ def DoubleExp(x, amp1, decay1, amp2, decay2, baseline ):
      
     return model
 
+def StrchExp(x, amp, decay, baseline ):
+    """Model a decaying sine wave and subtract data."""   
+    
+    model = (amp * np.exp(-x/decay))**2 + baseline
+    
+    return model
+
 def FromTautoTheta(tau,tau_err,T,R_particle,wavelength,nu,n):
     kb=1.38064852*10**-23
     D = kb*T/(6*math.pi*nu*(R_particle*10**-9))
