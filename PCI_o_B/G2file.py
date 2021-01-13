@@ -52,13 +52,39 @@ class G2():
         return str_res
     
     
-    def G2Calculatino(self):
+    def G2Calculatino(self,*args):
+        '''
+        
+
+        Parameters
+        ----------
+        *args : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        '''
         
         g2=[]
         var=[]
-        for i in range(self.nROI):
-            g2.append(self.CI[i].mean(axis = 0))
-            var.append(self.CI[i].var(axis = 0))
+        
+        if args:
+            if len(args) !=2:
+                print('give 2 int start and stop')
+                return
+            else:
+                for i in range(self.nROI):
+                    g2.append(self.CI[i].iloc[args[0]:args[1]].mean(axis = 0))
+                    var.append(self.CI[i].iloc[args[0]:args[1]].var(axis = 0))
+        else:
+            for i in range(self.nROI):
+                g2.append(self.CI[i].mean(axis = 0))
+                var.append(self.CI[i].var(axis = 0))
+            
+            
+            
         remove_nan = []
         remove_nan_v = []
         bho = []
@@ -73,7 +99,7 @@ class G2():
             if len(remove_nan_v[i])<len(remove_nan[i]):
                 remove_nan_v[i] = remove_nan_v[i].append(a)
             bho.append(remove_nan_v[i].replace(0,remove_nan_v[i][2:].max(axis=0) ))
-        
+            
         
         for i in range(self.nROI):
             self.g2.append(remove_nan[i][2:])
