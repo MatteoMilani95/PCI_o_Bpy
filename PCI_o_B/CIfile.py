@@ -36,6 +36,7 @@ class CIfile():
         self.ConfigFolder = 'C:\\Scattering_CCD\\ConfigFiles'
         self.FolderName = []
         self.Input_101 = []
+        self.Timepulse = False
        
         # ROI specification...
         self.nROI = []
@@ -294,7 +295,7 @@ class CIfile():
                             
         else:
             
-            
+            self.Timepulse = True
             self.TimepulseOraganization()
             
             return
@@ -362,14 +363,37 @@ class CIfile():
     
     def CIShow(self,which_ROI):
         
-        plt.figure() 
-        for i in range(len(self.CI[0].columns)):
-            if self.CI[0].columns[i].startswith('d'):
-                self.CI[which_ROI-1].plot(y=self.CI[0].columns[i],marker='.')
-        print(len(self.CI[0].columns))
-        plt.xlabel('tau  [s]')
-        plt.ylabel('g2-1')
-        plt.title('g2_ROI'+str(which_ROI).zfill(4))
+        folder_CI_graphs = self.FolderName + '\\CI_graphs'
+        
+        try:
+            os.mkdir(folder_CI_graphs)
+        except FileExistsError:
+            print('directory already existing, graphs will be uploaded')
+        
+        if self.Timepulse == False:
+            plt.figure() 
+            for i in range(len(self.CI[0].columns)):
+                if self.CI[0].columns[i].startswith('d'):
+                    self.CI[which_ROI-1].plot(y=self.CI[0].columns[i],marker='.')
+            
+        else:
+            plt.figure() 
+            plt.title('CI short') 
+            for i in range(len(self.CI[0].columns)):
+                if self.CI[0].columns[i].startswith('usec'):
+                    
+                    a = self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].dropna()
+                    plt.plot(a.tolist(),label=self.CI[which_ROI-1].columns[i])
+            plt.savefig(folder_CI_graphs+'\\CI_short_ROI'+str(i+1).zfill(4)+'.png', dpi=300)
+
+            plt.figure() 
+            plt.title('CI long')                    
+            for i in range(len(self.CI[0].columns)):
+                if self.CI[0].columns[i].startswith('sec'):
+    
+                    #self.CI[which_ROI-1].plot(y=self.CI[which_ROI-1].columns[i],marker='.',linestyle = 'solid')
+                    plt.plot(self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].tolist(),label=self.CI[which_ROI-1].columns[i])
+            plt.savefig(folder_CI_graphs+'\\CI_long_ROI'+str(i+1).zfill(4)+'.png', dpi=300)
 
         return
     
