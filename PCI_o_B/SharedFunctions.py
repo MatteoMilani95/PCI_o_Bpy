@@ -39,10 +39,10 @@ def DoubleExp(x, amp1, decay1, amp2, decay2, baseline ):
      
     return model
 
-def StrchExp(x, amp, decay, baseline ):
+def StretchExp(x, amp, decay, baseline, beta ):
     """Model a decaying sine wave and subtract data."""   
     
-    model = (amp * np.exp(-x/decay))**2 + baseline
+    model = (amp * np.exp(-x**beta / decay))**2 + baseline
     
     return model
 
