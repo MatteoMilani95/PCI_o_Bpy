@@ -332,7 +332,7 @@ class CIfile():
             
         CIall = []
         cibho = []
-        for i in range(self.nROI):    
+        for i in range(self.nROI):
             CIall.append(CIshort[i].merge(CIlong[i], how='outer', on = 'tsec', suffixes=('short', '')))
             CIall[i].set_index(CIlong[i].index, inplace=True)
             CIall[i].sort_values(by=['tsec'], inplace=True)
@@ -341,18 +341,19 @@ class CIfile():
             
             
         self.CI = cibho
+        self.tau.append(0)
         
         for i in range(len(self.CI[0].columns)):
                 if self.CI[0].columns[i].startswith('usec'):
                     for char in self.CI[0].columns[i].split('usec'):
                         if char.isdigit():
-                            self.tau.append(float(char)*self.lag*10**-6)
+                            self.tau.append(float(char)*10**-6)
             
         for i in range(len(self.CI[0].columns)):
                 if self.CI[0].columns[i].startswith('sec'):
                     for char in self.CI[0].columns[i].split('sec'):
                         try:
-                            self.tau.append(float(char)*self.lag)
+                            self.tau.append(float(char))
                         except ValueError:
                             a = 0 
             
@@ -378,22 +379,28 @@ class CIfile():
             
         else:
             plt.figure() 
-            plt.title('CI short') 
+            plt.title('CI ROI'+str(which_ROI).zfill(4)) 
             for i in range(len(self.CI[0].columns)):
                 if self.CI[0].columns[i].startswith('usec'):
                     
                     a = self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].dropna()
-                    plt.plot(a.tolist(),label=self.CI[which_ROI-1].columns[i])
-            plt.savefig(folder_CI_graphs+'\\CI_short_ROI'+str(i+1).zfill(4)+'.png', dpi=300)
-
-            plt.figure() 
-            plt.title('CI long')                    
+                    t=[]
+                    for j in range(len(a)):
+                        t.append(22*j)
+                    plt.plot(t,a.tolist(),label=self.CI[which_ROI-1].columns[i])
+                    plt.ylabel('CI ')
+                    plt.xlabel('time [s]')
+                                
             for i in range(len(self.CI[0].columns)):
                 if self.CI[0].columns[i].startswith('sec'):
-    
+                    t=[]
+                    for j in range(len(self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].tolist())):
+                        t.append(2*j)
                     #self.CI[which_ROI-1].plot(y=self.CI[which_ROI-1].columns[i],marker='.',linestyle = 'solid')
-                    plt.plot(self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].tolist(),label=self.CI[which_ROI-1].columns[i])
-            plt.savefig(folder_CI_graphs+'\\CI_long_ROI'+str(i+1).zfill(4)+'.png', dpi=300)
+                    plt.plot(t,self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].tolist(),label=self.CI[which_ROI-1].columns[i])
+                    plt.ylabel('CI')
+                    plt.xlabel('time [s]')
+            plt.savefig(folder_CI_graphs+'\\CI_ROI'+str(which_ROI).zfill(4)+'.png', dpi=300)
 
         return
     
@@ -410,6 +417,7 @@ class CIbead(CIfile):
         self.indexrefbead = n1
         self.indexrefext = n2
         self.scatt_angle = []
+        self.q_vector = []
         self.scatt_angle_exp = []
         self.Center = 0
         self.wavelength = wavelength
@@ -432,10 +440,6 @@ class CIbead(CIfile):
         str_res += '\n|--------------------+--------------------|'
         return str_res
         
-    def SetQvector(self):
-        for i in range(len(self.scatt_angle)):
-            self.qvetcros.append(4*math.pi**np.sin(self.scatt_angle[i]/2)/self.wavelength) 
-        return
         
     def SetThetaScatt(self,Radius):
         #insert the value of the radius in mm and the center in pixel!! This function has to be modified
@@ -459,7 +463,17 @@ class CIbead(CIfile):
             h.append(inner_h)
             self.scatt_angle.append(scattering_angle*360/(2*math.pi))
                 
-        return self.scatt_angle
+        return
+    
+    def SetqScatt(self,Radius):
+        
+        self.SetThetaScatt(Radius)
+        
+        q=4*np.pi*self.indexrefbead*np.sin(np.asarray(self.scatt_angle) / 2 * np.pi / 180 ) / (532*10**-9)
+        
+        self.q_vector = q.tolist()
+                
+        return 
     
     
         
