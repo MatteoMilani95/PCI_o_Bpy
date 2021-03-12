@@ -376,7 +376,7 @@ class CIfile():
         
         return 
     
-    def CIShow(self,which_ROI,n_cycle=0,time_per_pair=0):
+    def CIShow(self,which_ROI):
         
         folder_CI_graphs = self.FolderName + '\\CI_graphs'
         
@@ -392,17 +392,16 @@ class CIfile():
                     self.CI[which_ROI-1].plot(y=self.CI[0].columns[i],marker='.')
             
         else:
+            time_s = self.CI[0]['tsec']
+            time_l = self.CI[0]['tsec']
+            
+            
+            
             plt.figure() 
             plt.title('CI ROI'+str(which_ROI).zfill(4)) 
             for i in range(len(self.CI[0].columns)):
-                if self.CI[0].columns[i].startswith('usec'):
-                    
-                    a = self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].dropna()
-                    t=[]
-                    for j in range(len(a)):
-                        t.append(n_cycle*j)
-                     
-                    plt.plot(t,a.tolist(),label=self.CI[which_ROI-1].columns[i])
+                if self.CI[0].columns[i].startswith('usec'):                  
+                    plt.plot(time_s,self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]],label=self.CI[which_ROI-1].columns[i],marker='.')
                     plt.ylabel('CI ')
                     plt.xlabel('time [s]')
                     
@@ -411,11 +410,7 @@ class CIfile():
                     
             for i in range(len(self.CI[0].columns)):
                 if self.CI[0].columns[i].startswith('sec'):
-                    t=[]
-                    for j in range(len(self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].tolist())):
-                        t.append(time_per_pair*j)
-                    #self.CI[which_ROI-1].plot(y=self.CI[which_ROI-1].columns[i],marker='.',linestyle = 'solid')
-                    plt.plot(t,self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].tolist(),label=self.CI[which_ROI-1].columns[i])
+                    plt.plot(time_l,self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].tolist(),label=self.CI[which_ROI-1].columns[i],marker='.')
                     plt.ylabel('CI')
                     plt.xlabel('time [s]')
             
