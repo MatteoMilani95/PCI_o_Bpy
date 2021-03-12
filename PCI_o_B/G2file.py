@@ -20,7 +20,7 @@ from PCI_o_B import SharedFunctions as sf
 
 
 class G2():
-    def __init__(self,FolderName,CI,nROI,tau):
+    def __init__(self,FolderName,CI,nROI,tau,Timepulse = False):
         super().__init__()
         
         self.FolderName = FolderName
@@ -37,6 +37,7 @@ class G2():
         self.decaytime1err = []
         self.decaytime2 = []
         self.decaytime2err = []
+        self.Timepulse = Timepulse
         
     def __str__(self):
         str_res  = '\n|---------------|'
@@ -77,9 +78,14 @@ class G2():
                 print('give 2 int start and stop')
                 return
             else:
-                for i in range(self.nROI):
-                    g2_inf.append(self.CI[i].iloc[args[0]:args[1]].mean(axis = 0))
-                    var_inf.append(self.CI[i].iloc[args[0]:args[1]].var(axis = 0))
+                if self.Timepulse == True:
+                    for i in range(self.nROI):
+                        g2_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].mean(axis = 0))
+                        var_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].var(axis = 0))
+                else:
+                    for i in range(self.nROI):
+                        g2_inf.append(self.CI[i].iloc[args[0]:args[1]].mean(axis = 0))
+                        var_inf.append(self.CI[i].iloc[args[0]:args[1]].var(axis = 0))
                     
         else:
             for i in range(self.nROI):
