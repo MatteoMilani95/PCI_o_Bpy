@@ -333,11 +333,25 @@ class CIfile():
         CIall = []
         cibho = []
         for i in range(self.nROI):
-            CIall.append(CIshort[i].merge(CIlong[i], how='outer', on = 'tsec', suffixes=('short', '')))
+            CIall.append(CIshort[i].merge(CIlong[i], how='right', on = 'tsec', suffixes=('short', '')))
             CIall[i].set_index(CIlong[i].index, inplace=True)
             CIall[i].sort_values(by=['tsec'], inplace=True)
-            CIall[i].drop(columns=['I', 'd0'])
-            cibho.append(CIall[i].drop(columns=['I', 'd0']))
+            CIall[i].reset_index(drop=True, inplace=True)
+            #CIall[i].drop(['Iave', 'd0ave'], axis=1)
+            CIall[i].drop(columns=['Iave', 'd0ave'], inplace=True)
+            
+            col_name="d0"
+            first_col = CIall[i].pop(col_name)
+            CIall[i].insert(0, col_name, first_col)
+            
+            col_name="I"
+            first_col = CIall[i].pop(col_name)
+            CIall[i].insert(0, col_name, first_col)
+            
+            col_name="tsec"
+            first_col = CIall[i].pop(col_name)
+            CIall[i].insert(0, col_name, first_col)
+            cibho.append(CIall[i])
             
             
         self.CI = cibho
@@ -362,7 +376,7 @@ class CIfile():
         
         return 
     
-    def CIShow(self,which_ROI):
+    def CIShow(self,which_ROI,n_cycle=0,time_per_pair=0):
         
         folder_CI_graphs = self.FolderName + '\\CI_graphs'
         
@@ -386,20 +400,25 @@ class CIfile():
                     a = self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].dropna()
                     t=[]
                     for j in range(len(a)):
-                        t.append(22*j)
+                        t.append(n_cycle*j)
+                     
                     plt.plot(t,a.tolist(),label=self.CI[which_ROI-1].columns[i])
                     plt.ylabel('CI ')
                     plt.xlabel('time [s]')
-                                
+                    
+            
+
+                    
             for i in range(len(self.CI[0].columns)):
                 if self.CI[0].columns[i].startswith('sec'):
                     t=[]
                     for j in range(len(self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].tolist())):
-                        t.append(2*j)
+                        t.append(time_per_pair*j)
                     #self.CI[which_ROI-1].plot(y=self.CI[which_ROI-1].columns[i],marker='.',linestyle = 'solid')
                     plt.plot(t,self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].tolist(),label=self.CI[which_ROI-1].columns[i])
                     plt.ylabel('CI')
                     plt.xlabel('time [s]')
+            
             plt.savefig(folder_CI_graphs+'\\CI_ROI'+str(which_ROI).zfill(4)+'.png', dpi=300)
 
         return
@@ -473,7 +492,38 @@ class CIbead(CIfile):
         
         self.q_vector = q.tolist()
                 
-        return 
+        return
+    
+    def TauPlastic(self,R_i,Ev_Rate):
+        
+        if R_i  <self.Radius:
+            print('final R smaller than initial one')
+            return
+        else:
+
+            x_i = []
+            Dr = []
+            tau_plasit = []
+            x_f = self.ROI_x_pos
+            for i in range(len(self.ROI_x_pos)):
+                x_i.append(x_f[i] * R_i /(self.Radius-0.000001) )
+                Dr.append(np.abs( x_i[i] - x_f[i] ) / R_i * 200 * 10**-6)
+                tau_plasit.append(Dr[i] / Ev_Rate)
+        
+                
+            plt.figure()
+            plt.plot(self.q_vector,Dr,'o',label='plastic')
+            plt.plot(self.q_vector,2*np.pi/np.asarray(self.q_vector),'o',label='2*pi/q')
+            plt.xlabel('q vector [m-1]')
+            plt.ylabel('l[m]')
+            plt.title('evaporation rate = '+ str(Ev_Rate)+' m/s')
+            plt.legend(loc='lower left')
+            plt.savefig(self.FolderName + '\\fit_graphs\\evplot'+'.png')
+            plt.show()
+        
+        return Dr
+    
+    
     
     
         

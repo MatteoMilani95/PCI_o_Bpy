@@ -623,12 +623,33 @@ class G2():
         return
     
     def G2AreaDecaytime(self):
+        
+        folder_fit_graphs = self.FolderName + '\\fit_graphs'
+        
+        try:
+            os.mkdir(folder_fit_graphs)
+        except FileExistsError:
+            print('directory already existing, graphs will be uploaded')
 
         for i in range(self.nROI):
             I,stracazzo = sf.SFintegration(self.taug2[i][1:],self.g2[i][1:],self.taug2[i][1],self.taug2[i][-1])
             self.decaytime1.append(I)
             self.decaytime1err.append(stracazzo)
-            self.G2Show(i+1)
+            
+            
+            formatted_float = "{:.2f}".format(self.decaytime1[i] )
+            plt.figure() 
+                
+            plt.xscale('log')
+            plt.errorbar(self.taug2[i],self.g2[i],yerr=self.g2var[i],fmt='o',label= 'decaytime = '+ formatted_float + ' s')
+   
+            plt.xlabel('tau  [s]')
+            plt.ylabel('g2-1 ')
+            plt.title('g2_ROI'+str(i+1).zfill(4))
+            plt.ylim([-0.1, 1.1])
+            plt.legend(loc='lower left')
+                #plt.grid(True)
+            plt.savefig(folder_fit_graphs+'\\g2_ROI'+str(i+1).zfill(4)+'.png')
             
         
         
