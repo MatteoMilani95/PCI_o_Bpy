@@ -14,16 +14,29 @@ import scipy.integrate as integrate
 
 
 def theta1_func(H_value,R,n1,n2):
-    tc=np.arcsin(n2/n1)
-    H=lambda theta1 :R*np.sin(theta1)/np.cos(np.arcsin(n1/n2*np.sin(theta1))-theta1)*1/(1-np.tan(np.arcsin(n1/n2*np.sin(theta1))-theta1)/np.tan(np.arcsin(n1/n2*np.sin(theta1))))
-    theta=inversefunc(H,y_values=H_value,domain=[-tc, tc])
-    
-    if H_value>=0:
-        h=R*np.sin(theta)/np.cos(np.arcsin(n1/n2*np.sin(theta))-theta)
-        theta_scattering=np.arcsin(R*np.sin(theta)/h)
+    if n1>n2:
+        tc=np.arcsin(n2/n1)
+        H=lambda theta1 :R*np.sin(theta1)/np.cos(np.arcsin(n1/n2*np.sin(theta1))-theta1)*1/(1-np.tan(np.arcsin(n1/n2*np.sin(theta1))-theta1)/np.tan(np.arcsin(n1/n2*np.sin(theta1))))
+        theta=inversefunc(H,y_values=H_value,domain=[-tc, tc])
+        
+        if H_value>=0:
+            h=R*np.sin(theta)/np.cos(np.arcsin(n1/n2*np.sin(theta))-theta)
+            theta_scattering=np.arcsin(R*np.sin(theta)/h)
+        else:
+            h=R*np.sin(theta)/np.cos(np.arcsin(n1/n2*np.sin(theta))-theta)
+            theta_scattering=math.pi-np.arcsin(R*np.sin(theta)/h)
     else:
-        h=R*np.sin(theta)/np.cos(np.arcsin(n1/n2*np.sin(theta))-theta)
-        theta_scattering=math.pi-np.arcsin(R*np.sin(theta)/h)
+        tc=np.arcsin(n1/n2)
+        H=lambda theta1 :R*np.sin(theta1)/np.cos(np.arcsin(n1/n2*np.sin(theta1))-theta1)*1/(1+np.tan(np.arcsin(n1/n2*np.sin(theta1))-theta1)/np.tan(np.arcsin(n1/n2*np.sin(theta1))))
+        theta=inversefunc(H,y_values=H_value,domain=[-tc, tc])
+        
+        if H_value<=0:
+            h=R*np.sin(theta)/np.cos(np.arcsin(n1/n2*np.sin(theta))-theta)
+            theta_scattering=np.arcsin(R*np.sin(theta)/h)
+        else:
+            h=R*np.sin(theta)/np.cos(np.arcsin(n1/n2*np.sin(theta))-theta)
+            theta_scattering=math.pi-np.arcsin(R*np.sin(theta)/h)
+        
     
     return h,theta_scattering
 
@@ -90,4 +103,20 @@ def SFintegration(x,y,x0,xmax):
     return I
 
 
+def AsymmetryCalculator(func):
+    
+    ass = []    
+    
 
+    for i in range(int(len(func)/2)):
+        ass.append( ( np.abs(func[i] - func[-i]) / 2 ) / np.mean(np.asarray(func)) )
+        
+    
+    asymmerty = np.sum(np.asarray(ass))
+    
+    return asymmerty
+
+
+def truncate(n, decimals=0):
+    multiplier = 10 ** decimals
+    return int(n * multiplier) / multiplier

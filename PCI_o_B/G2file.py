@@ -522,6 +522,38 @@ class G2():
             plt.title('g2_ROI'+str(which_ROI).zfill(4))
         return
     
+    
+    def G2ShowFlactuations(self,which_ROI):
+        
+        folder_G2_graphs = self.FolderName + '\\G2_graphs'
+        
+        try:
+            os.mkdir(folder_G2_graphs)
+        except FileExistsError:
+            print('directory already existing, graphs will be uploaded')
+        
+        if isinstance(which_ROI, str):
+            plt.figure()
+            for i in range(self.nROI): 
+                 
+                plt.xscale('log')
+                plt.plot(self.taug2[i],self.g2var[i],marker='o',label='ROI '+str(i+1))
+                plt.xlabel('tau  [s]')
+                plt.ylabel('var')
+                #plt.ylim([-0.1, 1.1])
+            plt.title('varg2_ROI')
+            plt.legend(loc='lower left',fontsize='xx-small')
+            plt.savefig(folder_G2_graphs+'\\varg2_ROI.png', dpi=300)
+        else:
+            plt.figure() 
+            plt.xscale('log')
+            plt.plot(self.taug2[which_ROI-1],self.g2var[which_ROI-1],marker='o')
+            plt.xlabel('tau  [s]')
+            plt.ylabel('g2-1')
+            #plt.ylim([-0.1, 1.1])
+            plt.title('g2_ROI'+str(which_ROI).zfill(4))
+        return
+    
     def G2CutBaseLine(self,nPoints,ROI=0):
         
         if ROI==0:
