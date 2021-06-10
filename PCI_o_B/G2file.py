@@ -38,6 +38,7 @@ class G2():
         self.decaytime2 = []
         self.decaytime2err = []
         self.Timepulse = Timepulse
+        self.Timepulse2 = Timepulse
         
     def __str__(self):
         str_res  = '\n|---------------|'
@@ -82,6 +83,12 @@ class G2():
                     for i in range(self.nROI):
                         g2_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].mean(axis = 0))
                         var_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].var(axis = 0))
+                        '''
+                elif self.Timepulse2 == True:
+                    for i in range(self.nROI):
+                        g2_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].mean(axis = 0))
+                        var_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].var(axis = 0))
+                        '''
                 else:
                     for i in range(self.nROI):
                         g2_inf.append(self.CI[i].iloc[args[0]:args[1]].mean(axis = 0))
@@ -131,12 +138,18 @@ class G2():
         for i in range(self.nROI):
             for j in range(len(self.g2var[i])):
                print(self.g2var[i])
-        '''    
-        while len(self.tau)>len(self.g2[0]):
-            self.tau.pop()
+        ''' 
+        
+      
+        
+        if len(self.tau)>len(self.g2[0]):
+            while len(self.tau)>len(self.g2[0]):
+                self.tau.pop()
+       
             
         for i  in range(self.nROI):
             self.taug2.append(self.tau)
+            
             
         return
     
