@@ -17,6 +17,7 @@ import os
 import re
 from scipy import stats
 from PCI_o_B import SharedFunctions as sf
+from datetime import datetime
 
 class CI():
     
@@ -37,6 +38,7 @@ class CI():
         self.FolderName = []
         self.Input_101 = []
         self.Timepulse = False
+        self.Timepulse2 = False
        
         # ROI specification...
         self.nROI = []
@@ -56,6 +58,7 @@ class CI():
         self.CI = []
         self.tau = []
         self.qvetcros = []
+        self.Iav = []
         
         #
         self.filename = 'ROI'
@@ -426,8 +429,12 @@ class CI():
         for i in range(self.nROI):
             self.CI.append(pd.read_csv(self.FileList[i], sep='\\t', engine='python'))            
             
+        self.Timepulse2 = True   
+        
+        if Normalization == True:
+            self.NoiseNormalization()
             
-        ######################################add here the function for the normalization ###########################################   
+            
             
         delays = np.asarray(self.CI[0].columns[2:],dtype = str)
         for i in range(delays.size): delays[i] = delays[i].replace('d','')  
@@ -477,67 +484,54 @@ class CI():
         col_names = ['tsec','n','Iav']
         for t in tau_mean:
             col_names.append(format(t,'.3e')+' s')
-            
-         
-        print(self.CI[0].columns)   
-        self.CI[0].rename(columns = {col_names})
-        print(self.CI[0].columns) 
-        '''   
-            
+
             
             # "consolidate" cIs, i.e. for each t average them over delays tau that fall in
             # the same bin. Store in pandas dataframe and output to file consolidated cIs
-        print('Calculating cIs for all available time delays (in sec), for the first ROI over ' +str(self.nROI))
-        cIcons = pd.DataFrame(index=range(ntimes),columns=col_names)
-        cIcons['tsec'] = time_im
-        cIcons['n'] = self.CI[0]['n']
-        cIcons['Iav'] = self.CI[0]['Iav']
-        binning = []
-        binindex = []
-        for j in range(time_im.size):
-            cI = np.asarray(self.CI[0].iloc[j,2:])
-            good = ~np.isnan(tau_true[j]) & ~np.isnan(cI)
-            if (cI[good].size>0):
-                cImean, bin_edges, binnum2 = stats.binned_statistic(tau_true[j][good],\
-                            cI[good], statistic = 'mean', bins=bins)
-                cIcons.iloc[j,3:] = cImean
-                
-                binning.append(bin_edges)
-                binindex.append(binnum2)
-        print(len(binindex))
-        print(len(time_im))
-        
-        
-                
-        self.CI[0] = []
-        self.CI[0] = cIcons
-        
-        for i in range(self.nROI - 1): 
-            print('Calculating cIs for all available time delays (in sec), for ROI ' + str(i+2) + ' over ' +str(self.nROI))
+        for i in range(self.nROI):
+            now = datetime.now()
+            print("time =", now)
+            print('Calculating cIs for all available time delays (in sec), for ROI ' + str(i+1) + ' over ' +str(self.nROI))
             cIcons = pd.DataFrame(index=range(ntimes),columns=col_names)
             cIcons['tsec'] = time_im
-            cIcons['n'] = self.CI[i+1]['n']
-            cIcons['Iav'] = self.CI[i+1]['Iav']
+            cIcons['n'] = self.CI[i]['n']
+            cIcons['Iav'] = self.CI[i]['Iav']
+            binning = []
+            binindex = []
             for j in range(time_im.size):
-                cI = np.asarray(self.CI[i+1].iloc[j,2:])
-                good = ~np.isnan(tau_true[j]) & ~np.isnan(cI)
-                index = binindex[j]
-                d = {'Cigood': cI[good]}
-                df = pd.DataFrame(data=d, index = index)
-                df.replace(-np.inf, np.nan)
-                cImean = df.groupby(index).mean()
-
-                new_index = list(range(1, np.max(binindex[0])))
                 
-                cim = cImean.reindex(new_index)
- 
-                cIcons.iloc[j,3:] = np.transpose(np.asarray(cim))
-
-            self.CI[i+1] = []
-            self.CI[i+1] = cIcons
+                cI = np.asarray(self.CI[i].iloc[j,2:])
+                good = ~np.isnan(tau_true[j]) & ~np.isnan(cI)
+                prova = []
+                if (cI[good].size>0):
+                    now = datetime.now()
+                    #print("now_befor_av =", now)
+                    cImean, bin_edges, binnum2 = stats.binned_statistic(tau_true[j][good],\
+                                cI[good], statistic = 'mean', bins=bins)
+                    now = datetime.now()
+                    #print("now_after_av =", now)
+                    now = datetime.now()
+                    #print("now_befor_iloc =", now)
+                    cIcons.iloc[j,3:] = cImean
+                    now = datetime.now()
+                    #print("now_after_iloc =", now)
+                    
+                    
+                    
+                    
+                    binning.append(bin_edges)
+                    binindex.append(binnum2)
+        
             
+            self.CI[i] = []
+            self.CI[i] = cIcons
             
-        '''                
+        
+        for i in range(self.nROI): 
+            
+            self.Iav.append(self.CI[i]['Iav'])
+            self.CI[i].drop(['Iav'], axis=1,inplace=True)
+                              
                         
         return
     
@@ -552,7 +546,17 @@ class CI():
         
         return pulse_time,n_pulses,cycle_dur
     
-    
+    def NoiseNormalization(self):
+        
+        for l in range(self.nROI):
+            print('normalization of ROI '+str(l+1)+' over'+str(self.nROI))
+            for i in range(len(self.CI[l].columns[3:])):
+                
+                for j in range(self.CI[l].iloc[:,3+i].count()):
+                    self.CI[l].iloc[j,3+i] = self.CI[l].iloc[j,3+i] / np.sqrt( self.CI[l].iloc[j,2] * self.CI[l].iloc[j+i+1,2] )
+
+        
+        return
     
     def CIShow(self,which_ROI):
         
@@ -563,19 +567,23 @@ class CI():
         except FileExistsError:
             print('directory already existing, graphs will be uploaded')
         
-        if self.Timepulse == False:
-            plt.figure() 
-            for i in range(len(self.CI[0].columns)):
-                if self.CI[0].columns[i].startswith('d'):
-                    print('hole')
-                    self.CI[which_ROI-1].plot(y=self.CI[0].columns[i],marker='.')
+        
             
-        else:
+        
+        if self.Timepulse2 == True: 
             time = self.CI[0]['tsec']
+            plt.figure() 
+            plt.title('CI ROI'+str(which_ROI).zfill(4))
+            for i in range(len(self.CI[0].columns)-3):
+                plt.plot(time,self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i+3]],label=self.CI[which_ROI-1].columns[i+3],marker='.')
+            plt.ylabel('CI ')
+            plt.ylim([-0.1, 1.3])
+            plt.xlabel('time [s]')
+        
+        
+        elif self.Timepulse == True:
 
-            
-            
-            
+            time = self.CI[0]['tsec']   
             plt.figure() 
             plt.title('CI ROI'+str(which_ROI).zfill(4)) 
             for i in range(len(self.CI[0].columns)):
@@ -596,6 +604,13 @@ class CI():
                     plt.xlabel('time [s]')
             
             plt.savefig(folder_CI_graphs+'\\CI_ROI'+str(which_ROI).zfill(4)+'.png', dpi=300)
+            
+            
+        else :
+            plt.figure() 
+            for i in range(len(self.CI[0].columns)):
+                if self.CI[0].columns[i].startswith('d'):
+                    self.CI[which_ROI-1].plot(y=self.CI[0].columns[i],marker='.')
 
         return
     
