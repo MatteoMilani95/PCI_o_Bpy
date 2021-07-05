@@ -1,5 +1,5 @@
 # PCI_o_B
- PCI_o_B is a python package developed to Analyze CI files
+ PCI_o_B is a python package developed to Analyze ROI000N.dat files
  
 
 ## Setup
