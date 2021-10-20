@@ -20,15 +20,15 @@ from PCI_o_B import SharedFunctions as sf
 
 
 class G2():
-    def __init__(self,FolderName,CI,nROI,tau,Timepulse = False):
+    def __init__(self,FolderName,Timepulse = False):
         super().__init__()
         
         self.FolderName = FolderName
-        self.CI = CI
-        self.nROI = nROI
+        self.CI = []
+        self.nROI = []
         self.g2 = []
         self.g2var = []
-        self.tau = tau
+        self.tau = []
         self.taug2 = []
         self.scatt_angle = []
         self.scatt_angle_exp = []
@@ -38,7 +38,7 @@ class G2():
         self.decaytime2 = []
         self.decaytime2err = []
         self.Timepulse = Timepulse
-        self.Timepulse2 = Timepulse
+        
         
     def __str__(self):
         str_res  = '\n|---------------|'
@@ -56,7 +56,7 @@ class G2():
         return str_res
     
     
-    def G2Calculation(self,*args):
+    def G2Calculation(self,CI,nROI,tau,*args):
         '''
         
 
@@ -71,6 +71,10 @@ class G2():
 
         '''
         
+        self.CI = CI
+        self.nROI = nROI
+        self.tau = tau.copy()
+        
         g2_inf=[]
         var_inf=[]
         
@@ -83,12 +87,7 @@ class G2():
                     for i in range(self.nROI):
                         g2_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].mean(axis = 0))
                         var_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].var(axis = 0))
-                        '''
-                elif self.Timepulse2 == True:
-                    for i in range(self.nROI):
-                        g2_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].mean(axis = 0))
-                        var_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].var(axis = 0))
-                        '''
+
                 else:
                     for i in range(self.nROI):
                         g2_inf.append(self.CI[i].iloc[args[0]:args[1]].mean(axis = 0))
@@ -132,13 +131,6 @@ class G2():
             self.g2var.append(bho[i][2:])
             
             
-            
-            
-        '''    
-        for i in range(self.nROI):
-            for j in range(len(self.g2var[i])):
-               print(self.g2var[i])
-        ''' 
         
       
         
@@ -224,7 +216,7 @@ class G2():
             for i in range(self.nROI):
                 plt.figure() 
                 plt.xscale('log')
-                plt.errorbar(self.taug2[i],self.g2[i],yerr=self.g2var[i],fmt='o',label='chi = ' + str(goodness_fit[i]) + '\n' + 'baseline = ' + str(outparam[i][0][2]) + '\n' + 'decaytime = ' + str(outparam[i][0][1]))
+                plt.errorbar(self.taug2[i],self.g2[i],yerr=self.g2var[i],fmt='o',label= 'decaytime = ' + str(round(outparam[i][0][1],6)*1e3)+ ' us')
                 plt.plot(self.taug2[i],fitted_curve[i],'-.')
                 plt.xlabel('tau  [s]')
                 plt.ylabel('g2-1')
@@ -300,7 +292,7 @@ class G2():
         outparam = []
         
         for i in range(self.nROI):
-            outparam.append(curve_fit(sf.SingleStretchExp,  np.asarray(self.taug2[i]), np.asarray(self.g2[i]), variables, np.asarray(self.g2var[i]),bounds=([-np.inf,-np.inf,-np.inf,-np.inf,-0.001,0.1],[np.inf,np.inf,np.inf,np.inf,0.001,0.9]) ))
+            outparam.append(curve_fit(sf.SingleStretchExp,  np.asarray(self.taug2[i]), np.asarray(self.g2[i]), variables, np.asarray(self.g2var[i]),bounds=([-np.inf,-np.inf,-0.001,0.1],[np.inf,np.inf,0.001,10]) ))
 
                 
         folder_fit_graphs = self.FolderName + '\\fit_graphs'
@@ -311,7 +303,7 @@ class G2():
             print('directory already existing, graphs will be uploaded')
             
         for i in range(self.nROI):
-            fitted_curve.append(sf.SingleStretchExp( np.asarray(self.taug2[i]), outparam[i][0][0], outparam[i][0][1], outparam[i][0][2] , outparam[i][0][3], outparam[i][0][4] , outparam[i][0][5]))
+            fitted_curve.append(sf.SingleStretchExp( np.asarray(self.taug2[i]), outparam[i][0][0], outparam[i][0][1], outparam[i][0][2] , outparam[i][0][3]))
                  
         
         for i in range(self.nROI):
@@ -329,7 +321,7 @@ class G2():
                 plt.figure() 
                 
                 plt.xscale('log')
-                plt.errorbar(self.taug2[i],self.g2[i],yerr=self.g2var[i],fmt='o',label='chi = ' + str(goodness_fit[i]) + '\n' + 'baseline = ' + str(outparam[i][0][4]) + '\n' + 'decaytime1 = ' + str(outparam[i][0][1])+ '\n'+ 'decaytime2 = ' + str(outparam[i][0][3]) + '\n' + 'beta = ' + str(outparam[i][0][5]))
+                plt.errorbar(self.taug2[i],self.g2[i],yerr=self.g2var[i],fmt='o',label='chi = ' + str(goodness_fit[i]) + '\n' + 'baseline = ' + str(outparam[i][0][2]) + '\n' + 'decaytime1 = ' + str(outparam[i][0][1])+  '\n' + 'beta = ' + str(outparam[i][0][3]))
                 plt.plot(self.taug2[i],fitted_curve[i],'-.')
                 plt.xlabel('tau  [s]')
                 plt.ylabel('g2-1 ')
@@ -355,7 +347,7 @@ class G2():
         outparam = []
         
         for i in range(self.nROI):
-            outparam.append(curve_fit(sf.DoubleStretchExp,  np.asarray(self.taug2[i]), np.asarray(self.g2[i]), variables, np.asarray(self.g2var[i]),bounds=([-np.inf,-np.inf,-np.inf,-np.inf,-0.001,0.6,0.01],[np.inf,np.inf,np.inf,np.inf,0.001,0.7,0.9]) ))
+            outparam.append(curve_fit(sf.DoubleStretchExp,  np.asarray(self.taug2[i]), np.asarray(self.g2[i]), variables, np.asarray(self.g2var[i]),bounds=([-np.inf,-np.inf,-np.inf,-np.inf,-0.001,0.5,0.5],[np.inf,np.inf,np.inf,np.inf,0.001,10,10]) ))
 
                 
         folder_fit_graphs = self.FolderName + '\\fit_graphs'
@@ -675,6 +667,9 @@ class G2():
     
     def G2AreaDecaytime(self):
         
+        self.decaytime1 = []
+        self.decaytime1err = []
+        
         folder_fit_graphs = self.FolderName + '\\fit_graphs'
         
         try:
@@ -683,6 +678,7 @@ class G2():
             print('directory already existing, graphs will be uploaded')
 
         for i in range(self.nROI):
+
             I,stracazzo = sf.SFintegration(self.taug2[i][1:],self.g2[i][1:],self.taug2[i][1],self.taug2[i][-1])
             self.decaytime1.append(I)
             self.decaytime1err.append(stracazzo)
@@ -705,4 +701,42 @@ class G2():
         
         
         return
+    
+    def SaveG2(self):
         
+        folder_G2_Processed = self.FolderName + '\\processed_G2\\'
+        
+        try:
+            os.mkdir(folder_G2_Processed)
+        except FileExistsError:
+            print('directory already existing, graphs will be uploaded')
+        
+        for i in range(self.nROI):
+            self.g2[i].to_csv(folder_G2_Processed + 'ROI' + str(i+1).zfill(4) + 'g2.dat',sep='\t',index=False, header=None,na_rep='NaN')
+            self.g2var[i].to_csv(folder_G2_Processed + 'ROI' + str(i+1).zfill(4) + 'varg2.dat',sep='\t',index=False, header=None,na_rep='NaN')
+            pd.Series(self.taug2[i]).to_csv(folder_G2_Processed + 'ROI' + str(i+1).zfill(4) + 'taug2.dat',sep='\t', header=None,index=False,na_rep='NaN')
+        return
+        
+    
+    def UploadG2(self,nROI):
+        
+        self.nROI = nROI
+        
+
+        G2filelist = []
+        tauG2filelist = []
+        varG2filelist = []
+        
+        for i in range(self.nROI):
+            G2filelist.append(self.FolderName + '\\' + 'ROI' + str(1 + i).zfill(4) +  'g2.dat')
+            tauG2filelist.append(self.FolderName + '\\' + 'ROI' + str(1 + i).zfill(4) +  'taug2.dat')
+            varG2filelist.append(self.FolderName + '\\' + 'ROI' + str(1 + i).zfill(4) +  'varg2.dat')
+        
+
+        for i in range(self.nROI):
+            self.g2.append(pd.read_csv(G2filelist[i], sep='\t', engine = 'python', header = None, squeeze = True))
+            self.taug2.append(pd.read_csv(tauG2filelist[i], sep='\t', engine = 'python', header = None, squeeze = True).tolist())
+            self.g2var.append(pd.read_csv(varG2filelist[i], sep='\t', engine = 'python', header = None, squeeze = True))
+        
+        
+        return

@@ -18,6 +18,7 @@ import re
 from scipy import stats
 from PCI_o_B import SharedFunctions as sf
 from datetime import datetime
+import shutil
 
 class CI():
     
@@ -83,8 +84,7 @@ class CI():
         str_res += '\n| number of ROIs : ' + str(self.nROI) 
         str_res += '\n| ROIs size      : ' + str(self.GetROIsize())+ ' px'
         str_res += '\n| lag time       : ' +"{:.4f}".format(self.lag ) + ' s'
-        str_res += '\n| timepulse      : ' +str(self.Timepulse)
-        #str_res += '\n| Window of interest top : ' + str(self.GetWINDOWtop()) + ' px'
+        str_res += '\n| timepulse      : ' +str(self.Timepulse2)
         str_res += '\n|--------------------+--------------------|'
         return str_res
     
@@ -291,7 +291,7 @@ class CI():
         
   
         
-    def LoadCI(self, FolderName,lagtime,Timepulse = False):
+    def LoadCI(self, FolderName,lagtime,Normalization = False,Timepulse = False):
         #This method automatically call the method LoadInput_101_CalCI(), 
         #and the load the CI files for each ROI
         
@@ -312,6 +312,11 @@ class CI():
                 self.CI.append(pd.read_csv(self.FileList[i], sep='\\t', engine='python'))
             
             
+            
+            if Normalization == True:
+                self.NoiseNormalization()
+                
+                
             # get the tau list starting from the lag time
             for i in range(len(self.CI[0].columns)):
                 if self.CI[0].columns[i].startswith('d'):
@@ -417,7 +422,7 @@ class CI():
         pulse_time,n_pulses,cycle_dur = self.TimePulseLoad()
         self.lag = pulse_time[1]
         
-        ROI_name_list=list()
+        ROI_name_list=[]
             
         for i in range(self.nROI):
             ROI_name_list.append(str(1 + i).zfill(self.cI_file_digits))
@@ -534,7 +539,77 @@ class CI():
                               
                         
         return
+    def Save_CSV(self):
+        
+        folder_CI_Processed = self.FolderName + '\\processed_CI\\'
+        
+        try:
+            os.mkdir(folder_CI_Processed)
+        except FileExistsError:
+            print('directory already existing, graphs will be uploaded')
+        
+        for i in range(self.nROI):
+            self.CI[i].to_csv(folder_CI_Processed + 'ROI' + str(i+1).zfill(4) + 'cI.dat',sep='\t',index=False,na_rep='NaN')
+        
+        
+        
+        tausave = pd.Series(self.tau)
+
+
+        tausave.to_csv(folder_CI_Processed + 'lagtime.dat',sep='\t',index=False,na_rep='NaN')
+        
+           
+        original = self.FolderName + '\\Input_101_CalcCI.dat'
+        target = self.FolderName + '\\processed_CI\\Input_101_CalcCI.dat'
+
+        shutil.copyfile(original, target)
+        
+        return
     
+    def Quick_Load(self,FolderName):
+        
+        self.FolderName = FolderName
+        self.LoadInput_101_CalCI()
+        
+ 
+        ROI_name_list=list()
+            
+        for i in range(self.nROI):
+            ROI_name_list.append(str(1 + i).zfill(self.cI_file_digits))
+            self.ROIfilelist.append(self.filename + ROI_name_list[i]+ self.extension) 
+            self.FileList.append(self.FolderName + '\\' + self.filename + ROI_name_list[i] + self.extension)
+                
+        for i in range(self.nROI):
+            self.CI.append(pd.read_csv(self.FileList[i], sep='\\t', engine='python'))
+            
+            
+        a = pd.read_csv('E:\\Matteo\\PHD\\light_scattering\\20210622_silicaTM30_40ul_1Murea_100units_01Vf_300mW_15_dry13_SG\\Cam1\\exptime_0.070000\\out13\\processed_CI\\' + 'lagtime.dat', sep='\\t', engine='python')
+
+        tauload = a.values.tolist()
+
+        self.tau
+        for i in range(len(tauload)):
+            self.tau.append(tauload[i][0])
+        
+
+      
+            
+        for i in range(len(self.CI[0].columns)):
+                if self.CI[0].columns[i].endswith(' s'):
+                    
+                    for char in self.CI[0].columns[i].split(' s'):
+                        
+                        if char.isdigit():
+                            print('hola')
+                            self.tau.append(float(char))
+
+        self.Timepulse2 = True
+
+        
+        
+        
+        
+        return
     
     def TimePulseLoad(self):
         
@@ -549,9 +624,9 @@ class CI():
     def NoiseNormalization(self):
         
         for l in range(self.nROI):
-            print('normalization of ROI '+str(l+1)+' over'+str(self.nROI))
-            for i in range(len(self.CI[l].columns[3:])):
-                
+            print('normalization of ROI '+str(l+1)+' over '+str(self.nROI))
+            
+            for i in range(len(self.CI[l].columns[3:])): 
                 for j in range(self.CI[l].iloc[:,3+i].count()):
                     self.CI[l].iloc[j,3+i] = self.CI[l].iloc[j,3+i] / np.sqrt( self.CI[l].iloc[j,2] * self.CI[l].iloc[j+i+1,2] )
 
@@ -579,6 +654,7 @@ class CI():
             plt.ylabel('CI ')
             plt.ylim([-0.1, 1.3])
             plt.xlabel('time [s]')
+            plt.savefig(folder_CI_graphs+'\\CI_ROI'+str(which_ROI).zfill(4)+'.png', dpi=300)
         
         
         elif self.Timepulse == True:
@@ -592,6 +668,8 @@ class CI():
                     plt.ylabel('CI ')
                     plt.ylim([-0.1, 1.3])
                     plt.xlabel('time [s]')
+                    
+            plt.savefig(folder_CI_graphs+'\\CI_ROI'+str(which_ROI).zfill(4)+'.png', dpi=300)
                     
             
 
@@ -611,6 +689,8 @@ class CI():
             for i in range(len(self.CI[0].columns)):
                 if self.CI[0].columns[i].startswith('d'):
                     self.CI[which_ROI-1].plot(y=self.CI[0].columns[i],marker='.')
+                    
+            
 
         return
     
@@ -680,7 +760,7 @@ class CIbead(CI):
         
         self.SetThetaScatt(Radius)
         
-        q=4*np.pi*self.indexrefbead*np.sin(np.asarray(self.scatt_angle) / 2 * np.pi / 180 ) / (532*10**-9)
+        q=4*np.pi*self.indexrefbead*np.sin(np.asarray(self.scatt_angle) / 2 * np.pi / 180 ) / (532*1e-9)
         
         self.q_vector = q.tolist()
                 
