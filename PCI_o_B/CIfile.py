@@ -40,6 +40,7 @@ class CI():
         self.Input_101 = []
         self.Timepulse = False
         self.Timepulse2 = False
+        self.Timepulse3 = False
        
         # ROI specification...
         self.nROI = []
@@ -409,6 +410,9 @@ class CI():
         
         return 
     
+    
+    
+    
     def LoadTimePulseCI(self, FolderName,Normalization = False):
         #This method automatically call the method LoadInput_101_CalCI(), 
         #and the load the CI files for each ROI
@@ -539,6 +543,264 @@ class CI():
                               
                         
         return
+    
+    def consolidate(self, in2darray,il,ih):
+        """
+        utility function to 'consolidate' (i.e. average over row-dependent groups
+        of columns) a 2d array. The input array may contain nan's. Sets to nan the
+        output when no valid data are available
+    
+        Parameters
+        ----------
+        in2darray : TYPE 2d numpy array, any type (recommended: float64)
+            DESCRIPTION. data array, shape(Nr,Nc)
+        il : TYPE int, 2d array, shape(Nr,Nbins)
+            DESCRIPTION. lower index for defining the (row-dependent) range of 
+            columns over which in2darray has to be averaged
+        ih : TYPE int, 2d array, shape(Nr,Nbins)
+            DESCRIPTION. higher index for defining the (row-dependent) range of 
+            columns over which in2darray has to be averaged
+    
+        Returns
+        -------
+        cons : TYPE 2d numpy array, float64, size Nr rows and Nbins columns
+            DESCRIPTION. The average, row-by row, of in2darray. Averaging is done
+            over groups of columns, specified by il and ih (inclusive):
+            cons[r,b] = np.nanmean(in2darray[r,il[b]:ih[b]+1],axis=1)    
+    
+        """
+        verb = False #to enable/disable various check print
+        if verb: print('in2darray.shape:',in2darray.shape)
+        Nr = in2darray.shape[0]
+        Nc = in2darray.shape[1]
+        Nbins = il.shape[1]
+        if verb: print('Nbins',Nbins)
+        if il.shape != ih.shape:
+            raise NameError('consolidate(): il and ih must have the same shape')
+        if il.shape[0] != Nr:
+            raise NameError('consolidate(): il, ih, in2array must have the same'+\
+                            ' number of rows')
+        
+        cons = np.ones((Nr,Nbins),dtype = np.float64)
+        cons *= np.nan
+        for r in range(Nr):
+            for b in range(Nbins):
+                if il[r,b] >= 0: #il is set to -1 for those bins where no valid data
+                                #are available
+                    h = min(ih[r,b]+1,Nc)
+                    if verb: print(r,il[r,b],h)
+                    cons[r,b] = np.nanmean(in2darray[r,il[r,b]:h])
+                    #note that we average up to column ih[r,b] INCLUDED
+        return cons
+    
+    
+    
+    def build_indexes(self, tau_true,binl,binh):
+        """
+        Given a 2d array of time delays tau_true and a list of (time delay) 
+        bins, calculates, for each row of tau_true, the lowest and highest column 
+        index such that tau_true delay belongs to a given bin
+    
+        Parameters
+        ----------
+        tau_true : TYPE numpy 2d array, shape (Nr,Nc), expected dtype: float
+            DESCRIPTION. 2d array of time delays between all pairs of images. rows
+            correspond to timle of first image, columns to delays between first and
+            second image
+        binl : TYPE list of length Nbins
+            DESCRIPTION. lower edges of the delay time bins to be used.
+        binh : TYPE list of length Nbins
+            DESCRIPTION. higher edges of the delay time bins to be used.
+    
+        Returns
+        -------
+        indexl : TYPE numpy 2d array, int, shape(Nr,Nbins)
+            DESCRIPTION. lower index, see below
+        indexh : TYPE numpy 2d array, int, shape(Nr,Nbins)
+            DESCRIPTION. higher index, see below
+        
+        Note: tau_true[r,indexl[r,b]:indexh[r,b]+1] is the set of time delays that
+        belong to the b-th bin, for row r (i.e. for the r-th time of the first 
+                                           image)
+    
+        """
+        Nr = tau_true.shape[0]
+        Nbins = len(binl)
+        if len(binh) != Nbins:
+            raise NameError('build_indexes(): binl and binh must have the same size')
+    
+        indexl = -np.ones((Nr,Nbins),dtype = int)
+        indexh = -np.ones((Nr,Nbins),dtype = int)
+        
+        for r in range(Nr):
+            for b in range(Nbins):
+                # w = np.where( (tau_true[r,np.isfinite(tau_true[r])]>=binl[b]) & \
+                #               (tau_true[r,np.isfinite(tau_true[r])]< binh[b]))                
+                w = np.where( (tau_true[r]>=binl[b]) & \
+                              (tau_true[r]< binh[b]))                
+    
+                if w[0].size > 0:
+                    indexl[r,b] = w[0][0]
+                    indexh[r,b] = w[0][-1]
+        
+        return indexl,indexh
+    
+    def LoadConsolidate(self, folderin,ROIlist,rel_diff,normalization=False): 
+        
+        self.FolderName = folderin
+        self.Timepulse3 = True
+        
+        if folderin[-1] != '/' and folderin[-1] != '\\': folderin += '/'
+
+        #Note: we assume that all the ROIs have been processed with the same set of 
+        #parameters (same set of images, same set of time delays etc.)
+        
+        
+        self.nROI = len(ROIlist)
+        
+        for ROInum in ROIlist:
+            print('Processing data for ROI n.%d' % ROInum)
+            
+            #check if the npz file with the info for consolidating data exists
+            in_npzfile = folderin + 'consolidate_info.npz'
+            calc_cons = True
+            try:
+                npzfile = np.load(in_npzfile)
+                indexl = npzfile['indexl']
+                indexh = npzfile['indexh']
+                tau_cons = npzfile['tau_cons']
+                tau_mean = npzfile['tau_mean']
+                time_im = npzfile['time_im']
+            except:
+                calc_cons = True
+        
+            
+            filein = folderin + 'ROI' + str(ROInum).zfill(4) + 'cI.dat'
+            cIraw = pd.read_csv(filein, sep="\t") #read cI file (note: fills with NaN missing data)
+            
+            if normalization == True:
+                
+                
+                for i in range(len(cIraw.columns[3:])): 
+                    for j in range(cIraw.iloc[:,3+i].count()):
+                        cIraw.iloc[j,3+i] = cIraw.iloc[j,3+i] / np.sqrt( cIraw.iloc[j,2] * cIraw.iloc[j+i+1,2] )
+
+        
+                
+            
+            ntimes = cIraw['n'].size
+            if calc_cons:
+                #get list of delays (in number of images):
+                delays = np.asarray(cIraw.columns[2:],dtype = str)
+                for i in range(delays.size): delays[i] = delays[i].replace('d','')  
+                delays = delays.astype(int)
+                ndelays = delays.size
+            
+                #get list of time delays within a cycle
+                #TO DO: find time of each image in different ways (TimePulses, Guillaume's
+                #file with image time, ImagesLog etc.) 
+                filein = folderin + 'TimePulses.txt'
+                cycle_data =  pd.read_csv(filein, sep="\t",header = None)
+                n_pulses = int(cycle_data[0][0])
+                pulse_time = np.asarray(cycle_data[0][1:n_pulses+1],dtype=np.float64)/1E6  #in sec
+                cycle_dur = np.asarray(cycle_data[0][n_pulses+1],dtype=np.float64)/1E6  #in sec
+                
+                #time at which each image was taken (in sec, t=0 at the beginning of the cI file)
+                
+                time_im = np.zeros(ntimes,dtype = np.float64) 
+                time_im[0] =  pulse_time[0]
+                for j in range(0,time_im.size):
+                   time_im[j] = cycle_dur*(j//n_pulses) + pulse_time[j%n_pulses]
+                
+                #time delay between all pairs of images for which cI has been calculated
+                print('\ncalculating the time delays between all pairs of images...')
+                tau_true = np.ones((ntimes,ndelays),dtype = np.float64)*np.nan
+                for r in range(ntimes):
+                    for c in range(ndelays):
+                        r2 = r+delays[c]
+                        if r2 < ntimes: tau_true[r,c] = time_im[r2]-time_im[r]
+                
+                tau_true = np.round(tau_true,6) #the time resolution is 1E-6 sec....
+                
+                
+                print('\ncalculating the binned time delays...')
+                #get a sorted array with all unique delays, excluding nan and inf
+                a = np.sort(np.unique(tau_true))
+                a = a[np.isfinite(a)]
+                # "consolidate" list of delays, by grouping delays whose ratio is between 1
+                # and rel_diff
+                
+                #define bins to which all delays will be assigned. binl[0..Nbins-1] and 
+                #binh[0..Nbins-1] are the lower/upper bounds of the bins. 
+                #We want the first bin to correspond to the first
+                #delay only (usually 0 s or the smallest available lag):
+                if a[0]==0:
+                    epsilon = 1E-6
+                else:
+                    epsilon = 1E-6*a[0]
+                binl = [a[0]-epsilon] #define the first bin so that it contains just a[0], to
+                                        #within +/- epsilon
+                binh = [a[0]+epsilon]
+                hb = binh[0]  #the higher bound of the current bin
+                for j in range(1,a.size):
+                    if a[j] >= hb:
+                        binl.append(a[j])
+                        hb = rel_diff*a[j]
+                        binh.append(hb)
+                
+                        
+                #get indexes for consolidating data, consolidate tau_true, save relevant data
+                print('\ncalculating the indexes for consolidating data.')
+                print('This may take some time, for large cI files\n')
+                print('***** NOTE: the message\n'+\
+                      '\"RuntimeWarning: invalid value encountered in greater_equal...\"\n' + \
+                      'is harmless\n')
+                indexl,indexh = self.build_indexes(tau_true,binl,binh)
+                tau_cons = self.consolidate(tau_true,indexl,indexh) 
+                tau_mean = np.nanmean(tau_cons, axis = 0)        
+                ##### save indexl, indexh, tau_cons, tau_mean (pickled python data)        
+                outfile = folderin + 'consolidate_info.npz'
+                np.savez(outfile,indexl=indexl,indexh=indexh,tau_cons=tau_cons,\
+                         tau_mean=tau_mean,time_im=time_im)        
+        
+            self.tau = list(tau_mean)
+            # "consolidate" cIs, i.e. for each t average them over delays tau that fall in
+            # the same bin. Store in pandas dataframe and output to file consolidated cIs
+            print('\nCalculating the consolidated cIs, be patient...')
+            cI_cons = self.consolidate(np.asarray(cIraw.iloc[:,2:]),indexl,indexh) 
+            
+            #Store in pandas dataframe and output to file consolidated cIs
+            #create a list with all delays in the format, e.g., 's1.58e-02' for a delay of 
+            #1.58E-2 seconds. This list will be used as column names to output the 
+            #consolidated cI file
+            col_names = ['tsec','n','Iav']
+            for t in tau_mean:
+                col_names.append('s'+ format(t,'.3e'))
+            cIcons = pd.DataFrame(index=range(ntimes),columns=col_names[0:3])
+            cIcons['tsec'] = time_im
+            cIcons['n'] = cIraw['n']
+            cIcons['Iav'] = cIraw['Iav']
+            cIcons2 = pd.DataFrame(cI_cons,index=range(ntimes),columns=col_names[3:])
+            cIcons = pd.concat([cIcons,cIcons2],axis=1)
+            
+            print(ROInum)
+            
+            
+            self.CI.append( cIcons)
+            
+        for i in range(self.nROI): 
+            
+            self.Iav.append(self.CI[i]['Iav'])
+            self.CI[i].drop(['Iav'], axis=1,inplace=True)
+            
+            
+            
+            #save as text file
+            fout = folderin + 'ROI' + str(ROInum).zfill(4) +'cI_ts.dat'  #ts stands for "all Times in Sec"
+            cIcons.to_csv(fout,sep='\t',index=False,na_rep='nan') 
+        
+        return
+    
     def Save_CSV(self):
         
         folder_CI_Processed = self.FolderName + '\\processed_CI\\'
@@ -628,7 +890,7 @@ class CI():
             
             for i in range(len(self.CI[l].columns[3:])): 
                 for j in range(self.CI[l].iloc[:,3+i].count()):
-                    self.CI[l].iloc[j,3+i] = self.CI[l].iloc[j,3+i] / np.sqrt( self.CI[l].iloc[j,2] * self.CI[l].iloc[j+i+1,2] )
+                    self.CI[l].iloc[j,3+i] = self.CI[l].iloc[j,3+i] / np.sqrt( self.CI[l].iloc[j,2] * self.CI[l].iloc[j+i+1,2] )  #attention the index i makes no sense!!!
 
         
         return
@@ -646,6 +908,18 @@ class CI():
             
         
         if self.Timepulse2 == True: 
+            time = self.CI[0]['tsec']
+            plt.figure() 
+            plt.title('CI ROI'+str(which_ROI).zfill(4))
+            for i in range(len(self.CI[0].columns)-3):
+                plt.plot(time,self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i+3]],label=self.CI[which_ROI-1].columns[i+3],marker='.')
+            plt.ylabel('CI ')
+            plt.ylim([-0.1, 1.3])
+            plt.xlabel('time [s]')
+            plt.savefig(folder_CI_graphs+'\\CI_ROI'+str(which_ROI).zfill(4)+'.png', dpi=300)
+            
+            
+        if self.Timepulse3 == True: 
             time = self.CI[0]['tsec']
             plt.figure() 
             plt.title('CI ROI'+str(which_ROI).zfill(4))
@@ -688,8 +962,8 @@ class CI():
             plt.figure() 
             for i in range(len(self.CI[0].columns)):
                 if self.CI[0].columns[i].startswith('d'):
-                    self.CI[which_ROI-1].plot(y=self.CI[0].columns[i],marker='.')
-                    
+                    plt.plot(self.CI[which_ROI-1][self.CI[which_ROI-1].columns[i]].tolist(),marker='.')
+            plt.show()        
             
 
         return

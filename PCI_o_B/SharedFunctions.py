@@ -66,7 +66,7 @@ def DoubleStretchExp(x, amp1, decay1, amp2, decay2, baseline, beta,gamma ):
 def SingleStretchExp(x, amp1, decay1, baseline, beta):
     """Model a decaying sine wave and subtract data."""
     
-    model = amp1 * np.exp(-(x/decay1)) **beta  + baseline
+    model = amp1 * np.exp(-(x/decay1)**beta)   + baseline
      
     return model
 
@@ -80,7 +80,7 @@ def TripleExp(x, amp1, decay1, amp2, decay2, amp3, decay3, baseline ):
 def StretchExp(x, amp, decay, baseline, beta ):
     """Model a decaying sine wave and subtract data."""   
     
-    model = (amp * np.exp(-x / decay))**(2*beta) + baseline
+    model = (amp * np.exp(-x / decay)**beta) + baseline
     
     return model
 
