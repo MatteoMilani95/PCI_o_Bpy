@@ -48,7 +48,6 @@ class G2():
         str_res += '\n| folder               : ' + str(self.FolderName) 
         str_res += '\n| number of ROIs       : ' + str(self.nROI) 
         str_res += '\n| ROIs size            : ' + str(self.GetROIsize()) + ' px'
-        str_res += '\n| lag time             : ' + str(self.lag)
         str_res += '\n| x for theta(x)= 90°  : ' + str(self.Center) + 'px'
         str_res += '\n| Radius bead          : ' + str(self.Center) +'px'
         #str_res += '\n| Window of interest top : ' + str(self.GetWINDOWtop()) + ' px'
@@ -212,19 +211,72 @@ class G2():
         for i in range(self.nROI):
             goodness_fit.append( np.sum( ( ( np.asarray(fitted_curve[i])-np.asarray(self.g2[i]))  )**2 / np.asarray(fitted_curve[i]) ) )
     
+        np.logspace(5*1e-5,self.taug2[i][-1],100)
+        
+        
+        curve_for_plot = []
+        time_for_plot = []
+        
+        for i in range(self.nROI):
+            time_for_plot.append(np.logspace(-5,-2,100))
+            curve_for_plot.append(sf.SingExp( time_for_plot[i], outparam[i][0][0], outparam[i][0][1], outparam[i][0][2]))
+             
+        
         if plot == True:
+            fig = plt.figure()
+            ax = plt.axes() 
             for i in range(self.nROI):
-                plt.figure() 
-                plt.xscale('log')
-                plt.errorbar(self.taug2[i],self.g2[i],yerr=self.g2var[i],fmt='o',label= 'decaytime = ' + str(round(outparam[i][0][1],6)*1e3)+ ' us')
-                plt.plot(self.taug2[i],fitted_curve[i],'-.')
-                plt.xlabel('tau  [s]')
-                plt.ylabel('g2-1')
-                plt.title('g2_ROI'+str(i+1).zfill(4))
-                plt.ylim([-0.1, 1.1])
-                plt.legend(loc='lower left')
+                ax.set_xscale('log')
+                #plt.yscale('log')
+                ax.plot(self.taug2[i],np.asarray(self.g2[i])/np.asarray(fitted_curve[i][0]),linestyle='',marker='o',label= 'ROI ' + str(i+1))
+                ax.plot(time_for_plot[i],np.asarray(curve_for_plot[i])/np.asarray(curve_for_plot[i][0]),'-')
+                #print(np.asarray(self.g2[i])/np.asarray(fitted_curve[i][0]))
+                ax.set_xlabel(r'$\tau$' + str(' ') + ' [s]',fontsize=14)
+                ax.set_ylabel(r'$g_2-1$',fontsize=14)
+                ax.tick_params(bottom=True, top=True, left=True, right=False)
+                ax.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
+                ax.tick_params(axis="x", direction="in")
+                ax.tick_params(axis="y", direction="in")
+                ax.tick_params(axis='x', which='minor', direction="in")
+                ax.set_ylim([-0.1, 1.1])
+                ax.legend(loc='lower left')
                 #plt.grid(True)
                 plt.savefig(folder_fit_graphs+'\\g2_ROI'+str(i+1).zfill(4)+'.png')
+                
+                paper = True
+                
+            if paper == True:
+                fig = plt.figure()
+                ax = plt.axes() 
+    
+                ax.set_xscale('log')
+                #plt.yscale('log')
+                ax.plot(self.taug2[0],np.asarray(self.g2[0])/np.asarray(fitted_curve[0][0]),linestyle='',color='black',marker='o',label= ' x = 1.6 mm' )
+                ax.plot(time_for_plot[0],np.asarray(curve_for_plot[0])/np.asarray(curve_for_plot[0][0]),'-',color='black')
+                    
+                ax.plot(self.taug2[2],np.asarray(self.g2[2])/np.asarray(fitted_curve[2][0]),linestyle='',color='darkslategray',marker='s',label= ' x = 0.8 mm')
+                ax.plot(time_for_plot[2],np.asarray(curve_for_plot[2])/np.asarray(curve_for_plot[2][0]),'-',color='darkslategray')
+                    
+                ax.plot(self.taug2[4],np.asarray(self.g2[4])/np.asarray(fitted_curve[4][0]),linestyle='',color='darkcyan',marker='h',label= ' x = 0.0 mm')
+                ax.plot(time_for_plot[4],np.asarray(curve_for_plot[4])/np.asarray(curve_for_plot[4][0]),'-',color='darkcyan')
+                    
+                ax.plot(self.taug2[6],np.asarray(self.g2[6])/np.asarray(fitted_curve[6][0]),linestyle='',color='deepskyblue',marker='>',label= ' x = - 0.8 mm')
+                ax.plot(time_for_plot[6],np.asarray(curve_for_plot[6])/np.asarray(curve_for_plot[6][0]),'-',color='deepskyblue')
+                    
+                ax.plot(self.taug2[8],np.asarray(self.g2[8])/np.asarray(fitted_curve[8][0]),linestyle='',color='lightskyblue',marker='*',label= ' x = - 1.6 mm')
+                ax.plot(time_for_plot[8],np.asarray(curve_for_plot[8])/np.asarray(curve_for_plot[8][0]),'-',color='lightskyblue')
+                #print(np.asarray(self.g2[i])/np.asarray(fitted_curve[i][0]))
+                ax.set_xlabel(r'$\tau$' + str(' ') + ' [s]',fontsize=14)
+                ax.set_ylabel(r'$g_2-1$',fontsize=14)
+                ax.tick_params(bottom=True, top=True, left=True, right=False)
+                ax.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
+                ax.tick_params(axis="x", direction="in")
+                ax.tick_params(axis="y", direction="in")
+                ax.tick_params(axis='x', which='minor', direction="in")
+                ax.set_ylim([-0.1, 1.1])
+                ax.legend(loc='lower left')
+                #plt.grid(True)
+                plt.savefig('C:\\Users\\Matteo\\Desktop\\PHD\\paper_1\\g2picture.pdf')
         else:
             return
         
@@ -525,6 +577,39 @@ class G2():
             plt.ylabel('g2-1')
             plt.ylim([-0.1, 1.1])
             plt.title('g2_ROI'+str(which_ROI).zfill(4))
+            
+        paper = False
+        if paper == True:
+            fig = plt.figure()
+            ax = plt.axes() 
+    
+            ax.set_xscale('log')
+                #plt.yscale('log')
+            ax.plot(self.taug2[6],self.g2[6],marker='o',color='black',label='x= 0.00')
+                    
+            ax.plot(self.taug2[5],self.g2[5],marker='s',color='darkgreen',label='x= 0.27')
+                    
+            ax.plot(self.taug2[4],self.g2[4],marker='d',color='green',label='x= 0.54')
+                    
+            ax.plot(self.taug2[3],self.g2[3],marker='p',color='olivedrab',label='x= 0.81')
+                    
+            ax.plot(self.taug2[2],self.g2[2],marker='>',color='limegreen',label='x= 1.08')
+            
+            ax.plot(self.taug2[1],self.g2[1],marker='*',color='yellowgreen',label='x= 1.35')
+            
+            ax.plot(self.taug2[0],self.g2[0],marker='+',color='greenyellow',label='x= 1.62')
+                #print(np.asarray(self.g2[i])/np.asarray(fitted_curve[i][0]))
+            ax.set_xlabel(r'$\tau$' + str(' ') + ' [s]',fontsize=14)
+            ax.set_ylabel(r'$g_2-1$',fontsize=14)
+            ax.tick_params(bottom=True, top=True, left=True, right=False)
+            ax.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
+            ax.tick_params(axis="x", direction="in")
+            ax.tick_params(axis="y", direction="in")
+            ax.tick_params(axis='x', which='minor', direction="in")
+            ax.set_ylim([-0.1, 1.1])
+            ax.legend(loc='lower left')
+                #plt.grid(True)
+            plt.savefig('C:\\Users\\Matteo\\Desktop\\PHD\\paper_1\\g2picture_shell.pdf')
         return
     
     
@@ -587,6 +672,18 @@ class G2():
        
         
         return 
+    
+    def G2Normalize(self,ROI=0):
+        if ROI==0:
+            for i in range(self.nROI):
+                self.g2[i] = self.g2[i] / self.g2[i][1]
+                
+        else:
+              self.g2[ROI-1] = self.g2[ROI-1] / self.g2[ROI-1][1]
+             
+             
+        
+        return
     
     def G2CutIntercept(self,nPoints,ROI=0):
         
@@ -658,12 +755,7 @@ class G2():
             
         return 
     
-    def G2Normalize(self):
-        for i in range(self.nROI):
-            self.g2[i] = self.g2[i] / self.g2[i][1]
-        
-        
-        return
+   
     
     def G2AreaDecaytime(self):
         
@@ -736,7 +828,10 @@ class G2():
         for i in range(self.nROI):
             self.g2.append(pd.read_csv(G2filelist[i], sep='\t', engine = 'python', header = None, squeeze = True))
             self.taug2.append(pd.read_csv(tauG2filelist[i], sep='\t', engine = 'python', header = None, squeeze = True).tolist())
-            self.g2var.append(pd.read_csv(varG2filelist[i], sep='\t', engine = 'python', header = None, squeeze = True))
+            try:
+                self.g2var.append(pd.read_csv(varG2filelist[i], sep='\t', engine = 'python', header = None, squeeze = True))
+            except FileNotFoundError:
+                print('no var has been saved for ROI'+ str(1 + i).zfill(4))
         
         
         return
