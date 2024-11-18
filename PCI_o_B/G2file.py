@@ -146,6 +146,113 @@ class G2():
     
         for i  in range(self.nROI):
             self.taug2.append(self.tau)
+            
+            
+    def G2Calculation_correction(self,CI,nROI,tau,*args):
+        '''
+        
+
+        Parameters
+        ----------
+        *args : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        '''
+        
+        self.CI = CI
+        self.nROI = nROI
+        self.tau = tau.copy()
+        
+        print(self.tau)
+        
+        g2_inf=[]
+        var_inf=[]
+        
+        if args:
+            if len(args) !=2:
+                print('give 2 int start and stop')
+                return
+            else:
+                if self.Timepulse == True:
+                    for i in range(self.nROI):
+                        g2_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].mean(axis = 0))
+                        var_inf.append(self.CI[i].iloc[int(args[0]/2):int(args[1]/2)].var(axis = 0))
+
+                else:
+                    for i in range(self.nROI):
+                        
+                        print('ciao stronzo')
+                        
+                        g2_inf.append(self.CI[i].iloc[args[0]:args[1]:2].mean(axis = 0))
+                        var_inf.append(self.CI[i].iloc[args[0]:args[1]:2].var(axis = 0))
+                    
+        else:
+            for i in range(self.nROI):
+                print('ciao stronzo')
+                
+                odd_rows = self.CI[i].iloc[::2]  # This will select rows 0, 2, 4, etc.
+
+# Calculate the mean of the column 'A' using only the odd rows
+                #mean_value = odd_rows['A'].mean()
+                g2_inf.append(odd_rows.mean(axis = 0))
+                var_inf.append(odd_rows.var(axis = 0))
+                
+                
+        g2=[]
+        var=[]
+        
+        for i in range(self.nROI):    
+            g2.append(g2_inf[i].replace([np.inf, -np.inf], 0))
+            var.append(var_inf[i].replace([np.inf, -np.inf], 0))
+        
+            
+        remove_nan = []
+        remove_nan_v = []
+        bho = []
+        
+        for i in range(self.nROI):
+            nan_elems = g2[i].isnull()
+            nan_elems_v = var[i].isnull()
+            remove_nan.append(g2[i][~nan_elems])
+            remove_nan_v.append(var[i][~nan_elems_v])
+            
+            a = pd.Series([0],index=[remove_nan[i].index[-1]])
+            while len(remove_nan_v[i])<len(remove_nan[i]):
+                remove_nan_v[i] = remove_nan_v[i].append(a)
+                
+            bho.append(remove_nan_v[i].replace(0,remove_nan_v[i][2:].max(axis=0) ))
+        
+        
+                
+        
+        for i in range(self.nROI):
+            
+            self.g2.append(remove_nan[i][2:])
+            #self.g2 = [x for x in self.g2 if str(x) != 'nan']
+            self.g2var.append(bho[i][2:])
+            
+            
+            
+        
+      
+        
+        if len(self.tau)>len(self.g2[0]):
+            while len(self.tau)>len(self.g2[0]):
+                self.tau.pop()
+       
+            
+        for i  in range(self.nROI):
+            self.taug2.append(self.tau)
+            
+            
+        return
+    
+        for i  in range(self.nROI):
+            self.taug2.append(self.tau)
     
     
     
@@ -187,8 +294,12 @@ class G2():
         
         self.decaytime1 = []
         self.decaytime1err = []
+        self.amplidue = []
         
         fitted_curve = []
+        
+        self.g2fitted = []
+        self.taufitted = []
         
         outparam = self.fitG2(sf.SingExp,variables)
         
@@ -206,6 +317,8 @@ class G2():
         for i in range(self.nROI):
             self.decaytime1.append(outparam[i][0][1])
             self.decaytime1err.append(2*np.sqrt(outparam[i][1][1][1]))
+            self.amplidue.append(fitted_curve[i][0])
+            
         
         goodness_fit = [] 
         for i in range(self.nROI):
@@ -220,7 +333,9 @@ class G2():
         for i in range(self.nROI):
             time_for_plot.append(np.logspace(-5,-2,100))
             curve_for_plot.append(sf.SingExp( time_for_plot[i], outparam[i][0][0], outparam[i][0][1], outparam[i][0][2]))
-             
+        for i in range(self.nROI):    
+            self.g2fitted.append(np.asarray(curve_for_plot[i])/np.asarray(curve_for_plot[i][0]))
+            self.taufitted.append(time_for_plot[i])
         
         if plot == True:
             fig = plt.figure()
@@ -239,7 +354,7 @@ class G2():
                 ax.tick_params(axis="y", direction="in")
                 ax.tick_params(axis='x', which='minor', direction="in")
                 ax.set_ylim([-0.1, 1.1])
-                ax.legend(loc='lower left')
+                ax.legend(loc='lower left',frameon=False)
                 #plt.grid(True)
                 plt.savefig(folder_fit_graphs+'\\g2_ROI'+str(i+1).zfill(4)+'.png')
                 
@@ -266,17 +381,22 @@ class G2():
                 ax.plot(self.taug2[8],np.asarray(self.g2[8])/np.asarray(fitted_curve[8][0]),linestyle='',color='lightskyblue',marker='*',label= ' x = - 1.6 mm')
                 ax.plot(time_for_plot[8],np.asarray(curve_for_plot[8])/np.asarray(curve_for_plot[8][0]),'-',color='lightskyblue')
                 #print(np.asarray(self.g2[i])/np.asarray(fitted_curve[i][0]))
-                ax.set_xlabel(r'$\tau$' + str(' ') + ' [s]',fontsize=14)
-                ax.set_ylabel(r'$g_2-1$',fontsize=14)
+                ax.set_xlabel(r'$\tau$' + str(' ') + ' [s]',fontsize=22)
+                ax.set_ylabel(r'$g_2-1$',fontsize=22)
+                
+                
                 ax.tick_params(bottom=True, top=True, left=True, right=False)
                 ax.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
-                ax.tick_params(axis="x", direction="in")
-                ax.tick_params(axis="y", direction="in")
+                ax.tick_params(axis="x", direction="in",labelsize=16)
+                ax.tick_params(axis="y", direction="in",labelsize=16)
+                ax.tick_params(axis='y', which='minor', direction="in")
                 ax.tick_params(axis='x', which='minor', direction="in")
+                
+                
                 ax.set_ylim([-0.1, 1.1])
-                ax.legend(loc='lower left')
+                ax.legend(loc='lower left',frameon=False)
                 #plt.grid(True)
-                plt.savefig('C:\\Users\\Matteo\\Desktop\\PHD\\paper_1\\g2picture.pdf')
+                #plt.savefig('C:\\Users\\Matteo\\Desktop\\PHD\\paper_1\\FIG_2_brownian\\g2picture.pdf')
         else:
             return
         

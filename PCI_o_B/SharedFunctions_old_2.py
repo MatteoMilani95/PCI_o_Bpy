@@ -11,9 +11,6 @@ import os
 from scipy import interpolate
 import scipy.integrate as integrate
 from scipy.signal import savgol_filter
-import scipy.optimize, scipy.integrate
-from os import walk
-
 
 
 
@@ -264,7 +261,6 @@ def excess_xydata_average (x, y):
     sumy = 0.
     new_y = []
     new_x = []
-    new_z = []
     j = 0
     d = len(x)
   
@@ -320,7 +316,7 @@ def area_Hertz (Forza, E_Hertz, d0):
    
     
 def load_results_from_SLoad_ALL(path):
-    a = pd.read_csv(path, index_col=None,skiprows=1,names= ['number','d0 - d', 'Normal Force','phi', 'contact points','engineering_stress' ,'strain','time'],usecols=[1,2,3,4,5,6,7],sep='\,', decimal=".",engine='python')
+    a = pd.read_csv(path, index_col=None,skiprows=1,names= ['d0 - d', 'Normal Force','phi', 'contact points','Youngs modulus','errore Young modulus','engineering_stress' ,'strain'],usecols=[1,2,3,4,5,6,7,8],sep='\,', decimal=".")
           
     return a   
 
@@ -398,149 +394,8 @@ def load_results_from_SLoad_experiment_info(path):
 def load_results_from_SLoad_general_information(path):
     a = pd.read_csv(path, index_col=None,skiprows=1,names= ['phi [-]', 'strain rate [1/s]','d_0 [mm]', 'costant Hertz [Pa]','E [Pa]','poisson ratio [-]','yealding strain [-]','yealding force [-]','Delta Force[-]', 'Delta Force su Delta strain [-]','theta [rad]'],usecols=[1,2,3,4,5,6,7,8,9,10,11],sep='\,', decimal=".")
           
-    return a    
-
-def find_nearest(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return idx
+    return a       
      
-
-def power_law(x, m, q):
-    return q*x**m
-
-
-
-def particle_size(q,a,R_0,sigma):
-    
-    
-    
-    func = lambda R : a * np.exp( -(R-R_0)**2 / (2*sigma**2) ) *( 3 * (np.sin(q*R) - q*R*np.cos(q*R))*(q*R)**-3 )**2
-    
-    model = scipy.integrate.quad(func , -np.inf, np.inf)
-    
-    return model[0]
-
-def line(x,a,b):
-    return  a*x +b
-
-def fit_hertz(d_array,F_n_array,R):
-    
-    Force_Hertz = lambda d , E , C:  4/3 *  E * np.sqrt(R)   * (d)**(3/2)   + C
-    
-    popt, pcov = curve_fit(Force_Hertz, d_array , F_n_array)    #,bounds=([1e-10,-10],[1e9,10])
-    E = popt[0]
-    C = popt[1]
-    
-  
-    return E,C
-
-
-def load_shear_rheology(path):
-    a = pd.read_csv(path, index_col=None,skiprows=[0,1,2,3,4,5,6,7,8,9],names= ['strain','stress','Gprime','Gdoubleprime'],usecols=[2,3,4,5],sep='\t', decimal=",",encoding='UTF-16 LE')
-          
-    return a 
-
-def Fisher_Burford(x,A,df,R_c):
-    
-    model = np.log(A / np.power( 1+ x**2 * R_c**2 / 3*(df/2),df/2))
-    
-    return model
-
-
-def Guinier_lin_log(x,ln_I0,Rg):
-    
-    model = ln_I0 - (x**2 * Rg**2 / 3)
-    
-    return model
-
-def CheckFileExists(filePath):
-    try:
-        return os.path.isfile(filePath)
-    except:
-        return False
-
-def CheckFolderExists(folderPath):
-    return os.path.isdir(folderPath)
-
-def CheckCreateFolder(folderPath):
-    if (os.path.isdir(folderPath)):
-        return True
-    else:
-        print("Created folder:" + folderPath)
-        os.makedirs(folderPath)
-        return False
-
-def FindFileNames(FolderPath):
-    FilenameList = []
-    # get list of all filenames in raw difference folder
-    for (dirpath, dirnames, filenames) in walk(FolderPath):
-        FilenameList.extend(filenames)
-        break
-    return FilenameList
-
-def find_closest_index(arr, threshold):
-    """
-    Finds the index of the value in the array that is closest to the given threshold,
-    ignoring NaN values.
-
-    Parameters:
-    arr (list or array-like): The array to search.
-    threshold (float or int): The threshold value to compare against.
-
-    Returns:
-    int: The index of the value closest to the threshold. Returns None if all values are NaN.
-    """
-    
-
-    # Convert the array to a NumPy array
-    arr_np = np.array(arr)
-
-    # Check for all NaN array
-    if np.all(np.isnan(arr_np)):
-        return None
-
-    # Calculate absolute differences, ignoring NaN values
-    diff = np.abs(arr_np - threshold)
-
-    # Replace NaN values in diff with infinity to ignore them
-    diff[np.isnan(diff)] = np.inf
-
-    # Find the index of the minimum difference
-    closest_index = np.argmin(diff)
-
-    return closest_index
-
-def find_local_minima(arr):
-    # Ensure the input is a numpy array
-    arr = np.asarray(arr)
-    
-    # Create a boolean array where True indicates a local minimum
-    local_minima = (np.r_[True, arr[1:] < arr[:-1]] & np.r_[arr[:-1] < arr[1:], True])
-    
-    # Get the indices of the local minima
-    local_minima_indices = np.where(local_minima)[0]
-    
-    return local_minima_indices
-
-def list_filenames(folder_path,spacing):
-    try:
-        # Get a list of all files and directories in the specified folder
-        with os.scandir(folder_path) as entries:
-            filenames = [entry.name for idx, entry in enumerate(entries) if entry.is_file() and idx % spacing == 0]
-        return filenames
-    except FileNotFoundError:
-        print("The specified folder does not exist.")
-        return []
-    
-    
-def first_below_threshold_index(arr, threshold):
-    try:
-        return np.where(arr < threshold)[0][0]
-    except IndexError:
-        return -1 
-
-
            
     
     
