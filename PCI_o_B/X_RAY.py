@@ -486,7 +486,7 @@ class XRAY_DATA():
                     ax.legend()
                     
                     ax.text(0.001, 1e5, r'$d_f$ = '+str( np.round(df_10,2)), size=14,ha="left", va="top",bbox=dict(boxstyle="square",ec=(0.5, 0.5, 0.5),fc=(1., 0.8, 0.8)))
-                    plt.savefig(r'C:\Users\Matteo\Desktop\PHD\paper_2\20240611_discussion\fit'+str(np.round(self.phi[i]*100,2))+'.pdf',dpi=300,bbox_inches='tight',transparent=True)
+                    #plt.savefig(r'C:\Users\Matteo\Desktop\PHD\paper_2\20240611_discussion\fit'+str(np.round(self.phi[i]*100,2))+'.pdf',dpi=300,bbox_inches='tight',transparent=True)
 
                     
                     fig = plt.figure()
@@ -504,7 +504,7 @@ class XRAY_DATA():
                     
                     ax.set_xlim([8*1e-3,1])
                     #ax.set_ylim([1e-3,2])
-                    plt.savefig(r'C:\Users\Matteo\Desktop\PHD\paper_2\20240611_discussion\int'+str(np.round(self.phi[i]*100,2))+'.pdf',dpi=300,bbox_inches='tight',transparent=True)
+                    #plt.savefig(r'C:\Users\Matteo\Desktop\PHD\paper_2\20240611_discussion\int'+str(np.round(self.phi[i]*100,2))+'.pdf',dpi=300,bbox_inches='tight',transparent=True)
 
 
             except ValueError: 

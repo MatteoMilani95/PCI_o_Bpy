@@ -13,7 +13,7 @@ import scipy.integrate as integrate
 from scipy.signal import savgol_filter
 import scipy.optimize, scipy.integrate
 from os import walk
-
+import cv2 as cv
 
 
 
@@ -246,7 +246,7 @@ def fit_curver_line_loglog(PHI,YOUNG_MODULI,ax,alpha_x,alpha_y):
 
     
 def load_results_drying(path):
-    a = pd.read_csv(path, index_col=None,skiprows=1,names= ['time','diameter','diameter error','R/R0 [-]','phi [-]','err_phi[-]','Young Moduli [Pa]',],usecols=[0,1,2,3,4,5,6,7],sep='\,', decimal=".")
+    a = pd.read_csv(path, index_col=None,skiprows=1,names= ['time','diameter','diameter error','R/R0 [-]','phi [-]','err_phi[-]','Young Moduli [Pa]',],usecols=[0,1,2,3,4,5,6],sep='\,', decimal=".")
     
     return a
 
@@ -436,6 +436,22 @@ def fit_hertz(d_array,F_n_array,R):
     return E,C
 
 
+def fit_hertz_2_0(d_array,F_n_array,R):
+    
+    Force_Hertz = lambda d , E , C,d_0:  4./3. *  E * np.sqrt(R)   * (np.abs(d-d_0))**(3/2)  +C
+    
+    popt, pcov = curve_fit(Force_Hertz, d_array , F_n_array,bounds=([1e-10,-1,0.82],[2000,1,0.84]))    #,bounds=([1e-10,-10],[1e9,10])
+    E = popt[0]
+    C = popt[1]
+    d_0 = popt[2]
+ 
+    
+  
+    return E,C,d_0
+
+
+
+
 def load_shear_rheology(path):
     a = pd.read_csv(path, index_col=None,skiprows=[0,1,2,3,4,5,6,7,8,9],names= ['strain','stress','Gprime','Gdoubleprime'],usecols=[2,3,4,5],sep='\t', decimal=",",encoding='UTF-16 LE')
           
@@ -541,8 +557,87 @@ def first_below_threshold_index(arr, threshold):
         return -1 
 
 
-           
+import pandas as pd
+
+def load_data(path, skip_lines):
+    """
+    Load columns 3 (time), 4 (normal force) and 7 (gap) from a tab-separated file,
+    skipping the first `skip_lines` lines, and stop as soon as the 2nd column is empty.
+
+    Parameters
+    ----------
+    path : str
+        Path to the data file.
+    skip_lines : int
+        Number of lines to skip at the top of the file.
+
+    Returns
+    -------
+    time : np.ndarray
+        Time values (column 3).
+    force : np.ndarray
+        Normal force values (column 4).
+    gap : np.ndarray
+        Gap values (column 7).
+    nrows : int
+        Number of rows actually loaded.
+    """
+    # We use usecols to pull in columns [1,2,3,6] (0-based)
+    df = pd.read_csv(
+        path,
+        encoding = "utf-16",
+        sep='\t',
+        header=None,
+        skiprows=skip_lines,
+        usecols=[1, 2, 3, 6],
+        names=['col2', 'time', 'force', 'gap'],
+        dtype={'col2': str}  # read the 2nd column as string so empty cells become NaN
+    )
+
+    # Identify the first row where col2 is missing or blank
+    if df['time'].isna().any():
+       first_nan_idx = df['time'].isna().idxmax()
+       df = df.iloc[:first_nan_idx]
+
+    # Extract and return
+    time  = df['time'].to_numpy(dtype=float)
+    force = df['force'].to_numpy(dtype=float)
+    gap   = df['gap'].to_numpy(dtype=float)
+    nrows = len(df)
+
+    return time, force, gap, nrows
+
+
+
+def tamplate_match_box(img,template):
     
+    
+    res = cv.matchTemplate(img, template, 3)
+    min_val, max_val, min_loc, max_loc = cv.minMaxLoc(res)
+    
+    h, w = template.shape[:2] 
+    
+    top_left = max_loc
+    bottom_right = (top_left[0] + w, top_left[1] + h)  # Moved this line up before using it
+    
+    bbox  = (top_left[0],top_left[0]+w,top_left[1],top_left[1]+h)
+    return bbox
+
+           
+def list_txt_files(folder_path):
+    txt_files = []
+    for root, _, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith('.txt'):
+                full_path = os.path.join(root, file)
+                txt_files.append(full_path)
+    return txt_files
+
+
+def trim_if_odd(lst):
+    if len(lst) % 2 == 1:  # Check if length is odd
+        lst = lst[:-1]     # Remove the last element
+    return lst
     
 
 

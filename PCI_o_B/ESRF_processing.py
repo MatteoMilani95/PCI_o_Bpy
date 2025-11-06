@@ -442,7 +442,7 @@ class XRAY_DATA():
         return
     
     
-    def determine_ls(self,q_for_threshold,plot=True,step_plot=1):
+    def determine_ls(self,thr,plot=True,step_plot=1):
         
         self.I_diff = []
         self.l_c = []
@@ -451,10 +451,10 @@ class XRAY_DATA():
         for i in range(self.dim):
             self.I_diff.append(self.I_q_normalized_high_q[0][5:]-self.I_q_normalized_high_q[i][5:])
         
-        index_threshold = sf.find_nearest(self.q[0], 0.7)
+        #index_threshold = sf.find_nearest(self.q[0], q_for_threshold)
 
 
-        threshold = self.I_q_normalized_high_q[0][index_threshold]
+        threshold = thr
         zeros_difference = []
         for i in range(self.dim):
             zeros_difference.append(sf.first_below_threshold_index(self.I_diff[i], threshold))
