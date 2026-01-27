@@ -43,6 +43,11 @@ from scipy.optimize import curve_fit
 import pandas as pd
 from pathlib import Path
 from matplotlib.path import Path as MplPath
+from skimage.color import rgb2gray
+from skimage import data
+from skimage.filters import gaussian
+from skimage.segmentation import active_contour
+from scipy.ndimage import gaussian_filter1d, median_filter
 
 
 
@@ -207,6 +212,38 @@ def refine_velocities_PIV(x,y,v_x,v_y,x_edges,y_edges):
     v_x_masked[~inside] = np.nan
     v_y_masked[~inside] = np.nan
     return v_x_masked,v_y_masked,verts
+
+def zero_velocities_inside_droplet(x, y, v_x, v_y, x_edges, y_edges,
+                                   outside_nan=False):
+    # 1) Droplet center
+    xc, yc = np.mean(x_edges), np.mean(y_edges)
+    
+    # 2) Sort edge points by angle
+    angles = np.arctan2(y_edges - yc, x_edges - xc)
+    order = np.argsort(angles)
+    verts = np.column_stack((x_edges[order], y_edges[order]))
+
+    # 3) Close polygon
+    if not np.allclose(verts[0], verts[-1]):
+        verts = np.vstack((verts, verts[0]))
+
+    # 4) Point-in-polygon test
+    poly = MplPath(verts)
+    points = np.column_stack((x, y))
+    inside = poly.contains_points(points)
+
+    # 5) Zero velocities inside droplet
+    v_x_out = v_x.copy()
+    v_y_out = v_y.copy()
+    v_x_out[inside] = 0.0
+    v_y_out[inside] = 0.0
+
+    # Optional: mask outside instead
+    if outside_nan:
+        v_x_out[~inside] = np.nan
+        v_y_out[~inside] = np.nan
+
+    return v_x_out, v_y_out, verts
 
 def refine_contrast(img, contrast, brightness):
     
@@ -675,6 +712,505 @@ def remove_outliers(reference, *arrays, severity=1.5):
             filtered_arrays.append(np.asarray(arr)[mask])
     
     return tuple(filtered_arrays)
+
+def circle_coords_by_theta(img,num_points=360):
+    """
+    Compute coordinates of the largest centered circle that fits inside `img`.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        Image array with shape (H, W) or (H, W, C).
+    num_points : int
+        Number of angle samples between 0 (inclusive) and 2*pi (exclusive).
+        Higher -> smoother ordered floats.
+    ccw : bool
+        If True (default) theta increases counter-clockwise (math convention).
+        If False, theta increases clockwise (image convention).
+    return_integer : bool
+        If True returns both float coords and integer pixel coords.
+    dedupe : bool
+        If True, deduplicate sequential integer coordinates while preserving theta order.
+
+    Returns
+    -------
+    coords_float : np.ndarray, shape (num_points, 2)
+        Float (x, y) coordinates ordered by theta. x is horizontal pixel coordinate,
+        y is vertical pixel coordinate (image coordinates).
+    coords_int (optional) : np.ndarray, shape (N, 2)
+        Integer pixel coordinates (x, y) in the same theta order, deduplicated.
+    """
+    if img is None or not isinstance(img, np.ndarray):
+        raise ValueError("img must be a numpy array")
+
+    H, W = img.shape[:2]
+    cx = W / 2.0
+    cy = H / 2.0
+    r = min(W, H) / 2.0
+
+    # Angles: 0 .. 2*pi (exclusive) in ascending order
+    thetas = np.linspace(0.0, 2.0 * np.pi, num_points, endpoint=False)
+
+    # Parametric circle (math coords): x = cx + r*cos, y_math = r*sin (y positive up)
+    xs = cx + r * np.cos(thetas)
+    ys = cy + r * np.sin(thetas)   # clockwise theta -> image y increases with +sin
+
+    return ys, xs
+
+def find_edges_with_active_contour(img):
+    
+    x_forfind,y_for_find= circle_coords_by_theta(img,num_points=360)
+    
+    
+    init = np.array([x_forfind,y_for_find]).T
+    
+    snake = active_contour(
+        gaussian(img, sigma=3, preserve_range=False),
+        init,
+        alpha=0.015,
+        beta=10,
+        gamma=0.001,
+    )
+    
+    x = snake[:, 1].astype(int)
+    y = snake[:, 0].astype(int)
+
+    return x,y
+
+
+def find_and_crop_droplets_in_list_2(
+        imgs,
+        frame_numbers=None,          # optional list of original frame numbers, length == len(imgs)
+        x_top=500, y_top=150, w=150, h=120,
+        threshold=0.6, overlap_thresh=0.3, y_shift=-15,
+        save_dir=None
+    ):
+    """
+    Detect, crop, and track droplets in a list of images.
+    - droplet tracking by x-coordinate (droplets move left).
+    - filenames: drop_{drop_id:02d}_f{original_frame:04d}.tif
+    - saves a CSV and returns crops_all, ids_all, xs_all, ys_all
+    Final ordering of outputs (and CSV) is sorted by (drop_id, frame).
+    """
+
+    import numpy as np, cv2, os, pandas as pd
+
+    # === Simple NMS ===
+    def nms(boxes, overlapThresh=0.3):
+        if len(boxes) == 0:
+            return []
+        boxes = np.array([[x, y, x + w, y + h] for x, y, w, h in boxes])
+        x1, y1, x2, y2 = boxes[:,0], boxes[:,1], boxes[:,2], boxes[:,3]
+        area = (x2 - x1 + 1) * (y2 - y1 + 1)
+        idxs = np.argsort(y2)
+        pick = []
+        while len(idxs) > 0:
+            last = len(idxs) - 1
+            i = idxs[last]
+            pick.append(i)
+            if last == 0:
+                break
+            xx1 = np.maximum(x1[i], x1[idxs[:last]])
+            yy1 = np.maximum(y1[i], y1[idxs[:last]])
+            xx2 = np.minimum(x2[i], x2[idxs[:last]])
+            yy2 = np.minimum(y2[i], y2[idxs[:last]])
+            w_ = np.maximum(0, xx2 - xx1 + 1)
+            h_ = np.maximum(0, yy2 - yy1 + 1)
+            overlap = (w_ * h_) / area[idxs[:last]]
+            idxs = np.delete(idxs, np.concatenate(([last], np.where(overlap > overlapThresh)[0])))
+        return boxes[pick].astype("int")
+
+    # === Prepare template from first image ===
+    if len(imgs) == 0:
+        return [], [], [], []
+
+    img0 = imgs[0]
+    if img0.ndim == 3:
+        img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+    template = img0[y_top:y_top+h, x_top:x_top+w]
+    H, W = img0.shape
+
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+
+    # We'll collect structured entries, then sort by (drop_id, frame)
+    entries = []  # list of dicts: {save_id, drop_id, frame, x, y, path, crop}
+
+    # === Tracker setup ===
+    droplets = {}  # drop_id: last_x
+    next_drop_id = 1
+    max_x_shift = 25  # strict movement threshold (px)
+
+    save_counter = 0  # sequential counter for saved images (save_id)
+
+    # === Process each image ===
+    for frame_idx, img in enumerate(imgs):
+
+        # Determine original frame number
+        if frame_numbers is None:
+            original_frame = frame_idx + 1
+        else:
+            original_frame = frame_numbers[frame_idx]
+
+        if img.ndim == 3:
+            img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        else:
+            img_gray = img
+
+        res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
+        loc = np.where(res >= threshold)
+        detections = [[int(x), int(y), w, h] for x, y in zip(loc[1], loc[0])]
+        filtered_boxes = nms(detections, overlap_thresh)
+
+        half_w, half_h = w // 2, h // 2
+
+        # Sort detections by decreasing x (right to left)
+        filtered_boxes = sorted(filtered_boxes, key=lambda b: -(b[0] + (b[2]-b[0])//2))
+
+        for (x1, y1, x2, y2) in filtered_boxes:
+            cx = x1 + (x2 - x1) // 2
+            cy = y1 + (y2 - y1) // 2
+
+            # Try to match to existing droplets using last_x
+            best_match = None
+            best_dx = None  # smallest backward motion
+            
+            for drop_id, info in droplets.items():
+                last_x = info["x"]
+                last_frame = info["frame"]
+            
+                # --- FRAME CONSTRAINT ---
+                if original_frame != last_frame + 1:
+                    continue  # no skips allowed
+            
+                dx = last_x - cx  # positive = moving left
+            
+                # --- MONOTONIC X CONSTRAINT ---
+                if dx < -3:  # moved right more than tolerance
+                    continue
+            
+                # --- MAX MOTION CONSTRAINT ---
+                if dx <= max_x_shift:
+                    if best_dx is None or dx < best_dx:
+                        best_dx = dx
+                        best_match = drop_id
+            
+            matched_id = best_match
+
+            if matched_id is None:
+                matched_id = next_drop_id
+                next_drop_id += 1
+
+            # Update tracker
+            droplets[matched_id] = {
+                "x": cx,
+                "frame": original_frame
+            }
+
+            # Crop region
+            x_start = max(0, cx - half_w)
+            y_start = max(0, cy - half_h + y_shift)
+            x_end = min(W, x_start + w)
+            y_end = min(H, y_start + h)
+            crop = img_gray[y_start:y_end, x_start:x_end]
+
+            # Save file if requested
+            save_counter += 1
+            if save_dir:
+                filename = f"drop_{matched_id:02d}_f{original_frame:04d}.tif"
+                full_path = os.path.join(save_dir, filename)
+                cv2.imwrite(full_path, crop)
+                path_val = full_path
+            else:
+                path_val = None
+
+            # Record entry (save_id is the progressive saved image number)
+            entries.append({
+                "save_id": save_counter,
+                "drop_id": matched_id,
+                "frame": original_frame,
+                "x": x_start,
+                "y": y_start,
+                "path": path_val,
+                "crop": crop
+            })
+
+    # === Build DataFrame and sort by drop_id then frame (user requested order) ===
+    if len(entries) == 0:
+        # nothing detected
+        return [], [], [], []
+
+    df = pd.DataFrame([{
+        "save_id": e["save_id"],
+        "drop_id": e["drop_id"],
+        "frame": e["frame"],
+        "x": e["x"],
+        "y": e["y"],
+        "path": e["path"]
+    } for e in entries])
+
+    # Sort by drop_id first, then frame
+    df_sorted = df.sort_values(by=["drop_id", "frame"]).reset_index(drop=True)
+
+    # Reorder entries according to that sorting and build outputs
+    sorted_indices = df_sorted["save_id"].tolist()  # list of save_id in desired order
+
+    # Map save_id -> crop for quick access
+    crop_map = {e["save_id"]: e["crop"] for e in entries}
+    x_map = {e["save_id"]: e["x"] for e in entries}
+    y_map = {e["save_id"]: e["y"] for e in entries}
+    frame_map = {e["save_id"]: e["frame"] for e in entries}
+    path_map = {e["save_id"]: e["path"] for e in entries}
+    dropid_map = {e["save_id"]: e["drop_id"] for e in entries}
+
+    crops_all = [crop_map[sid] for sid in sorted_indices]
+    # ids_all will be the progressive save index (as you wanted previously), but reordered
+    ids_all = [sid for sid in sorted_indices]
+    xs_all = [x_map[sid] for sid in sorted_indices]
+    ys_all = [y_map[sid] for sid in sorted_indices]
+    frames_all = [frame_map[sid] for sid in sorted_indices]
+    paths_all = [path_map[sid] for sid in sorted_indices]
+    drop_ids_all = [dropid_map[sid] for sid in sorted_indices]  # if you want to keep drop_id list too
+
+    # === Save CSV (sorted by drop_id, frame as requested) ===
+    if save_dir:
+        csv_path = os.path.join(save_dir, "droplet_coordinates.csv")
+        df_sorted.to_csv(csv_path, index=False)
+        print(f"✅ Saved coordinates CSV: {csv_path}")
+
+    # Return crops_all and the other arrays aligned with CSV order (drop_id then frame)
+    # Note: ids_all are the progressive save indices (but in the sorted order)
+    return crops_all, ids_all, xs_all, ys_all
+
+
+def find_and_crop_droplets_in_list_old(
+        imgs,
+        frame_numbers=None,          # NEW: original frame numbers
+        x_top=500, y_top=150, w=150, h=120,
+        threshold=0.6, overlap_thresh=0.3, y_shift=-15,
+        save_dir=None
+    ):
+    """
+    Detect, crop, and track droplets in a list of images.
+    Droplet IDs are consistent across frames based on x-coordinate.
+    Cropped droplets are saved with filenames reflecting drop ID and original frame.
+    """
+
+    import numpy as np, cv2, os, pandas as pd
+
+    # === Simple NMS ===
+    def nms(boxes, overlapThresh=0.3):
+        if len(boxes) == 0:
+            return []
+        boxes = np.array([[x, y, x + w, y + h] for x, y, w, h in boxes])
+        x1, y1, x2, y2 = boxes[:,0], boxes[:,1], boxes[:,2], boxes[:,3]
+        area = (x2 - x1 + 1) * (y2 - y1 + 1)
+        idxs = np.argsort(y2)
+        pick = []
+        while len(idxs) > 0:
+            last = len(idxs) - 1
+            i = idxs[last]
+            pick.append(i)
+            if last == 0:
+                break
+            xx1 = np.maximum(x1[i], x1[idxs[:last]])
+            yy1 = np.maximum(y1[i], y1[idxs[:last]])
+            xx2 = np.minimum(x2[i], x2[idxs[:last]])
+            yy2 = np.minimum(y2[i], y2[idxs[:last]])
+            w_ = np.maximum(0, xx2 - xx1 + 1)
+            h_ = np.maximum(0, yy2 - yy1 + 1)
+            overlap = (w_ * h_) / area[idxs[:last]]
+            idxs = np.delete(idxs, np.concatenate(([last], np.where(overlap > overlapThresh)[0])))
+        return boxes[pick].astype("int")
+    
+    temp_crops = {}
+
+    # === Prepare template from first image ===
+    img0 = imgs[0]
+    if img0.ndim == 3:
+        img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+    template = img0[y_top:y_top+h, x_top:x_top+w]
+    H, W = img0.shape
+
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+
+    crops_all, ids_all, xs_all, ys_all, frames_all, paths_all = [], [], [], [], [], []
+
+    # === Tracker setup ===
+    droplets = {}  # drop_id: last_x
+    next_drop_id = 1
+    max_x_shift = 25#w/2  # strict movement threshold
+
+    # === Process each image ===
+    for frame_idx, img in enumerate(imgs):
+
+        # Determine original frame number
+        if frame_numbers is None:
+            original_frame = frame_idx + 1
+        else:
+            original_frame = frame_numbers[frame_idx]
+
+        if img.ndim == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        res = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
+        loc = np.where(res >= threshold)
+        detections = [[int(x), int(y), w, h] for x, y in zip(loc[1], loc[0])]
+        filtered_boxes = nms(detections, overlap_thresh)
+
+        half_w, half_h = w // 2, h // 2
+
+        # Sort detections by decreasing x (right to left)
+        filtered_boxes = sorted(filtered_boxes, key=lambda b: -(b[0] + (b[2]-b[0])//2))
+
+        for (x1, y1, x2, y2) in filtered_boxes:
+            cx = x1 + (x2 - x1) // 2
+            cy = y1 + (y2 - y1) // 2
+
+            # Try to match to existing droplets
+            matched_id = None
+            for drop_id, last_x in droplets.items():
+                if abs(cx - last_x) <= max_x_shift:
+                    matched_id = drop_id
+                    break
+
+            if matched_id is None:
+                matched_id = next_drop_id
+                next_drop_id += 1
+
+            # Update tracker
+            droplets[matched_id] = cx
+
+            # Crop region
+            x_start = max(0, cx - half_w)
+            y_start = max(0, cy - half_h + y_shift)
+            x_end = min(W, x_start + w)
+            y_end = min(H, y_start + h)
+            crop = img[y_start:y_end, x_start:x_end]
+
+            
+            # Save
+            if save_dir:
+                filename = f"drop_{matched_id:02d}_f{original_frame:04d}.tif"
+                full_path = os.path.join(save_dir, filename)
+                cv2.imwrite(full_path, crop)
+                paths_all.append(full_path)
+            else:
+                paths_all.append(None)
+            
+            # NEW: sequential ID matching the number of saved images
+            saved_counter = len(paths_all)
+            
+            # store crop with correct ordering
+            temp_crops[saved_counter] = crop
+            
+            ids_all.append(saved_counter)
+            xs_all.append(x_start)
+            ys_all.append(y_start)
+            frames_all.append(original_frame)
+    
+    # === Save CSV ===
+    if save_dir:
+        csv_path = os.path.join(save_dir, "droplet_coordinates.csv")
+        import pandas as pd
+    
+        df = pd.DataFrame({
+            "frame": frames_all,
+            "id": ids_all,
+            "x": xs_all,
+            "y": ys_all,
+            "path": paths_all
+        })
+    
+        # NEW: sort by droplet ID first, then frame
+        df = df.sort_values(by=["id", "frame"])
+    
+        df.to_csv(csv_path, index=False)
+        print(f"✅ Saved coordinates CSV: {csv_path}")
+        
+    crops_all = [temp_crops[i] for i in sorted(temp_crops.keys())]
+
+    return crops_all, ids_all, xs_all, ys_all
+
+def detect_channel_edges_symmetric(imgs, top_min, top_max, bottom_min, bottom_max,
+                                   smooth_sigma=3, median_window=15, outlier_thresh=5):
+    """
+    Detect wavy channel edges with local median outlier rejection and symmetry enforcement.
+
+    Parameters
+    ----------
+    img : 2D or 3D numpy array
+        Input grayscale or BGR image.
+    top_min, top_max : int
+        Vertical bounds to search for top edge.
+    bottom_min, bottom_max : int
+        Vertical bounds to search for bottom edge.
+    smooth_sigma : float
+        Gaussian smoothing sigma.
+    median_window : int
+        Window size for local median filter.
+    outlier_thresh : float
+        Maximum allowed deviation from local median (in pixels).
+
+    Returns
+    -------
+    top_edge_sym : 1D array
+        Symmetrically corrected top edge (row index per column).
+    bottom_edge_sym : 1D array
+        Symmetrically corrected bottom edge (row index per column).
+    """
+
+    imgs_float = [img.astype(np.float32) for img in imgs]
+    stack = np.stack(imgs_float, axis=0)
+    img = np.mean(stack, axis=0).astype(np.uint8)
+
+    # Convert to grayscale if needed
+    if img.ndim == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img = img.astype(np.float32)
+    h, w = img.shape
+
+    # Vertical gradient
+    grad_y = cv2.Sobel(img, cv2.CV_32F, 0, 1, ksize=5)
+
+    # Column-wise edge detection
+    top_edge = np.zeros(w)
+    bottom_edge = np.zeros(w)
+    for x in range(w):
+        col = grad_y[:, x]
+        top_edge[x] = np.argmin(col[top_min:top_max]) + top_min
+        bottom_edge[x] = np.argmin(col[bottom_min:bottom_max]) + bottom_min
+
+    # --- Median-based outlier rejection ---
+    def remove_outliers(edge):
+        # Local median
+        med = median_filter(edge, size=median_window, mode='nearest')
+        # Mark points that deviate too much
+        outliers = np.abs(edge - med) > outlier_thresh
+        edge_clean = edge.copy()
+        edge_clean[outliers] = np.nan
+        # Interpolate missing points
+        x_axis = np.arange(len(edge))
+        edge_clean[outliers] = np.interp(x_axis[outliers], x_axis[~outliers], edge_clean[~outliers])
+        return edge_clean
+
+    top_edge = remove_outliers(top_edge)
+    bottom_edge = remove_outliers(bottom_edge)
+
+    # --- Gaussian smoothing ---
+    top_edge = gaussian_filter1d(top_edge, smooth_sigma)
+    bottom_edge = gaussian_filter1d(bottom_edge, smooth_sigma)
+
+    # --- Symmetry around local midline ---
+    midline = (top_edge + bottom_edge) / 2
+    half_width = (bottom_edge - top_edge) / 2
+    top_edge_sym = midline - half_width
+    bottom_edge_sym = midline + half_width
+
+    return top_edge_sym, bottom_edge_sym
+
+
 
 
 

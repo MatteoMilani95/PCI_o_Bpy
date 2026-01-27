@@ -43,8 +43,10 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import label, generate_binary_structure
 from skimage import filters, feature, color, data
 from scipy.ndimage import label, generate_binary_structure
-
+from scipy.signal import savgol_filter
+import datetime
 import itertools
+from skimage.draw import polygon
 
 
 
@@ -95,13 +97,6 @@ def load_images_from_folder_2_0(folder, extension, skip=0, stop=None, step=1):
     print(f"Loaded {len(images)} images from '{folder}' (skip={skip}, stop={stop}, step={step})")
     return images
 
-def _apply_args(func: Callable, args: Tuple) -> Any:
-    """
-    Unpack args tuple and call func.
-    """
-    return func(*args)
-
-
 def _read_image(path: str) -> Any:
     """
     Read an image from disk, returning None on failure.
@@ -110,6 +105,12 @@ def _read_image(path: str) -> Any:
     if img is None:
         print(f"Warning: Failed to load image at {path}")
     return img
+
+def _apply_args(func: Callable, args: Tuple) -> Any:
+    """
+    Unpack args tuple and call func.
+    """
+    return func(*args)
 
 
 def run_in_parallel(
@@ -261,20 +262,37 @@ def interpolate_one_2d(img_channel):
     return channel_interpolated
 
 
-def plot_chennel_3d(channel):
-    
-    x = np.arange(0, channel.shape[1])  # Width of the image
-    y = np.arange(0, channel.shape[0])  # Height of the image
+
+def plot_channel_3d(channel, save_path=None):
+    x = np.arange(0, channel.shape[1])  # Width
+    y = np.arange(0, channel.shape[0])  # Height
     x, y = np.meshgrid(x, y)
     
     # Create the 3D surface plot
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     
-    # Plot the surface using the Hue channel data
-    surface = ax.plot_surface(x, y, channel, cmap='hsv')
+    # Plot the surface using the channel data
+    surface = ax.plot_surface(x, y, channel, cmap='viridis', vmin=20, vmax=125)
+    
+    # Set z-axis limits
+    ax.set_zlim(15, 140)
 
-    return
+    # Fix aspect ratio (x, y, z scales)
+    ax.set_box_aspect((channel.shape[1], channel.shape[0], (140 - 15)*10))  # z range = 125
+    
+    # Add colorbar for reference
+    fig.colorbar(surface, ax=ax, shrink=0.5, aspect=5)
+
+    # Save image if save_path is provided
+    if save_path is not None:
+        import os
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    
+    plt.show()
+    plt.close(fig)
+
 
 
 def my_edge_detection(image):
@@ -1640,6 +1658,386 @@ def fit_fourier_for_contact_area(edges, order_expasion):
     
     
     return coeffs,x_fit,y_fit,area,oblateness
+
+
+def fit_fourier_for_contact_area_cosonly(edges, order_expasion):
+
+    N = order_expasion
+    ys, xs = np.nonzero(edges)  # rows (y), cols (x)
+
+    if len(xs) == 0:
+        raise RuntimeError("No edge pixels found. Try changing Canny thresholds.")
+
+    # Centroid
+    cx = xs.mean()
+    cy = ys.mean()
+
+    # Polar coordinates
+    theta = np.arctan2(ys - cy, xs - cx)
+    r = np.sqrt((xs - cx)**2 + (ys - cy)**2)
+
+    # Sort by angle
+    order = np.argsort(theta)
+    theta_sorted = theta[order]
+    r_sorted = r[order]
+
+    # --- Build design matrix using only cosine terms ---
+    # r(θ) = a0 + a1 cos θ + ... + aN cos(Nθ)
+    A = np.ones((theta_sorted.size, N + 1))
+    for n in range(1, N + 1):
+        A[:, n] = np.cos(n * theta_sorted)
+
+    # Least–squares solve
+    coeffs, *_ = lstsq(A, r_sorted, rcond=None)
+
+    # --- Reconstruct smooth curve ---
+    theta_fit = np.linspace(-np.pi, np.pi, 720)
+    A_fit = np.ones((theta_fit.size, N + 1))
+    for n in range(1, N + 1):
+        A_fit[:, n] = np.cos(n * theta_fit)
+
+    r_fit = A_fit @ coeffs
+
+    x_fit = cx + r_fit * np.cos(theta_fit)
+    y_fit = cy + r_fit * np.sin(theta_fit)
+
+    # Extract coefficients
+    a0 = coeffs[0]
+    an = coeffs[1:]        # only cosine terms
+    bn = np.zeros_like(an)  # no sine terms
+
+    # --- Area for cosine-only Fourier series ---
+    # Area = π (a₀² + ½ Σ aₙ²)
+    area = np.pi * (a0**2 + 0.5 * np.sum(an**2))
+
+    # Oblateness measure
+    oblateness = np.sqrt(np.sum(an**2)) / a0
+
+    return coeffs, x_fit, y_fit, area, oblateness
+
+
+
+def find_max_in_area(img: np.ndarray, x: np.ndarray, y: np.ndarray):
+    """
+    Find the maximum pixel value and its coordinates within a polygonal area.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        Grayscale image (2D array).
+    x : np.ndarray
+        1D array of x coordinates defining the polygon perimeter.
+    y : np.ndarray
+        1D array of y coordinates defining the polygon perimeter.
+
+    Returns
+    -------
+    max_val : float
+        Maximum pixel value within the polygon.
+    max_loc : tuple(int, int)
+        (x, y) coordinates of the maximum pixel.
+    mask : np.ndarray
+        Binary mask used for computation.
+    """
+
+    # Input validation
+    if len(img.shape) != 2:
+        raise ValueError("Input image must be grayscale (2D).")
+    if len(x) != len(y):
+        raise ValueError("x and y must have the same length.")
+
+    # Combine x and y into a polygon array
+    polygon = np.stack((x, y), axis=-1).astype(np.int32)
+
+    # Create a mask and fill the polygon area
+    mask = np.zeros_like(img, dtype=np.uint8)
+    cv2.fillPoly(mask, [polygon], 255)
+
+    # Compute the maximum value and its location inside the mask
+    _, max_val, _, max_loc = cv2.minMaxLoc(img, mask=mask)
+
+    return max_val, max_loc, mask
+
+
+
+
+def max_near_center(hue_channel, x_fit, y_fit, max_distance):
+    """
+    Find the maximum grayscale value inside a polygon, but only within
+    a defined distance from the polygon perimeter's center of mass.
+
+    Parameters
+    ----------
+    hue_channel : 2D numpy array
+        Grayscale image.
+    x_fit, y_fit : array-like
+        Coordinates of the polygon vertices.
+    max_distance : float
+        Maximum allowed distance (in pixels) from the center of mass.
+
+    Returns
+    -------
+    max_value : float or int
+        Maximum grayscale value found.
+    max_x : int
+        x-coordinate of the max value.
+    max_y : int
+        y-coordinate of the max value.
+    """
+
+    # --- 1. Compute center of mass of perimeter ---
+    center_x = np.mean(x_fit)
+    center_y = np.mean(y_fit)
+
+    # --- 2. Create polygon mask ---
+    rr, cc = polygon(y_fit, x_fit, shape=hue_channel.shape)
+
+    # Pixel coordinates inside region
+    region_values = hue_channel[rr, cc]
+
+    # --- 3. Compute distance of each pixel in polygon to center ---
+    distances = np.sqrt((cc - center_x)**2 + (rr - center_y)**2)
+
+    # Restrict to pixels within distance
+    valid_mask = distances <= max_distance
+
+    # If no pixels meet the condition, return None
+    if not np.any(valid_mask):
+        return None, None, None
+
+    # Filter region to only valid pixels
+    valid_pixels = region_values[valid_mask]
+    valid_rr = rr[valid_mask]
+    valid_cc = cc[valid_mask]
+
+    # --- 4. Find max among remaining pixels ---
+    idx = np.argmax(valid_pixels)
+    max_value = valid_pixels[idx]
+    max_y = valid_rr[idx]
+    max_x = valid_cc[idx]
+
+    return max_value, max_x, max_y
+
+
+
+
+from skimage import measure
+
+
+# -----------------------------
+# 1) Create mask from perimeter
+# -----------------------------
+def mask_from_perimeter(img_shape, x_fit, y_fit):
+    mask = np.zeros(img_shape[:2], dtype=np.uint8)
+    pts = np.vstack([x_fit, y_fit]).T.astype(np.int32).reshape((-1,1,2))
+    cv2.fillPoly(mask, [pts], 1)
+    return mask
+
+# -----------------------------
+# 2) Extract iso-height contour within perimeter
+# -----------------------------
+def contour_at_iso(img, x_fit, y_fit, iso_height):
+    mask = mask_from_perimeter(img.shape, x_fit, y_fit)
+    region = img * mask
+    contours = measure.find_contours(region, iso_height)
+    if not contours:
+        return None
+    # pick longest contour
+    contour = max(contours, key=lambda c: len(c))
+    
+    
+    edges = np.zeros(img.shape, dtype=bool)
+    
+    # Round coordinates to nearest integer pixel indices
+    ys = np.clip(np.round(contour[:, 0]).astype(int), 0, img.shape[0]-1)
+    xs = np.clip(np.round(contour[:, 1]).astype(int), 0, img.shape[1]-1)
+    
+    edges[ys, xs] = True
+    return edges
+
+# -----------------------------
+# 3) Parameterize contour by normalized arc length
+# -----------------------------
+def perimeter_parameterization(contour):
+    diffs = np.diff(contour, axis=0, append=contour[:1,:])
+    dist = np.sqrt((diffs[:,0])**2 + (diffs[:,1])**2)
+    s = np.cumsum(dist)
+    s /= s[-1]  # normalize [0,1]
+    return s
+
+# -----------------------------
+# 4) Fourier cosine expansion
+# -----------------------------
+def fourier_descriptor_cosine(contour, n_coeff=20):
+    s = perimeter_parameterization(contour)
+    x = contour[:,0]
+    y = contour[:,1]
+    coeffs_x = np.array([np.mean(x * np.cos(2*np.pi*k*s)) for k in range(n_coeff)])
+    coeffs_y = np.array([np.mean(y * np.cos(2*np.pi*k*s)) for k in range(n_coeff)])
+    amplitude = np.sqrt(coeffs_x**2 + coeffs_y**2)
+    return amplitude
+
+# -----------------------------
+# 5) Full analysis function
+# -----------------------------
+def analyze_mountain_fourier(img, x_fit, y_fit, iso_height, n_coeff=20):
+    contour = contour_at_iso(img, x_fit, y_fit, iso_height)
+    if contour is None:
+        return None
+    amplitude = fourier_descriptor_cosine(contour, n_coeff)
+    # Optional high-frequency fraction as a single jaggedness metric
+    high_freq_fraction = amplitude[n_coeff//4:].sum() / amplitude.sum()
+    return {
+        "iso_height": float(iso_height),
+        "amplitude_spectrum": amplitude,
+        "high_freq_fraction": float(high_freq_fraction)
+    }
+
+
+def analyze_fourier_coeffs(coeffs):
+    """
+    Given cosine-only Fourier coefficients from a radial fit, compute:
+    - Area
+    - Oblateness
+    - Jaggedness (derivative-based measure)
+    
+    Parameters
+    ----------
+    coeffs : ndarray
+        Fourier coefficients [a0, a1, ..., aN] (cosine-only)
+        
+    Returns
+    -------
+    area : float
+        Area of the fitted shape
+    oblateness : float
+        Oblateness measure (sqrt(sum(a_n^2)) / a0)
+    jaggedness : float
+        Jaggedness measure (sqrt(0.5 * sum((n*a_n)^2)) / a0)
+    """
+    a0 = coeffs[0]
+    an = coeffs[1:]           # cosine terms
+    bn = np.zeros_like(an)    # sine terms are zero
+    
+    # Area
+    area = np.pi * (a0**2 + 0.5 * np.sum(an**2))
+    
+    # Oblateness
+    oblateness = np.sqrt(np.sum(an**2)) / a0
+    
+    # Jaggedness (derivative-based)
+    n = np.arange(1, len(an)+1)
+    jaggedness = np.sqrt(0.5 * np.sum((n * an)**2)) / a0
+    
+    return area, oblateness, jaggedness
+
+
+
+
+######################################################################## ASYMMETRY CALCULATION ############################
+def perimeter_left_right_asymmetry(smoothed_hue, x_fit_asy, y_fit_asy):
+    """
+    Compute left-right asymmetry of an image restricted to a polygon perimeter.
+    
+    Arguments:
+    - smoothed_hue: 2D numpy array (image)
+    - x_fit_asy, y_fit_asy: arrays describing the perimeter of the region
+    
+    Returns:
+    - asymmetry value
+    - left_mask, right_mask: boolean masks inside the perimeter
+    """
+    H, W = smoothed_hue.shape
+    yy, xx = np.mgrid[0:H, 0:W]
+
+    # --- 1. Create perimeter mask ---
+    polygon = Path(np.column_stack((x_fit_asy, y_fit_asy)))
+    points = np.column_stack((xx.ravel(), yy.ravel()))
+    inside = polygon.contains_points(points).reshape(H, W)
+
+    # --- 2. Approximate axis as mean x for each row within perimeter ---
+    left_mask = np.zeros_like(smoothed_hue, dtype=bool)
+    right_mask = np.zeros_like(smoothed_hue, dtype=bool)
+    
+    # Find row-wise axis x using mean of perimeter pixels in that row
+    for y in range(H):
+        x_perimeter = xx[y, inside[y]]
+        if len(x_perimeter) == 0:
+            continue
+        axis_x = np.mean(x_perimeter)
+        left_mask[y, :int(axis_x)]  = inside[y, :int(axis_x)]
+        right_mask[y, int(axis_x)+1:] = inside[y, int(axis_x)+1:]
+
+    # --- 3. Compute asymmetry only within perimeter ---
+    left_mean  = np.mean(smoothed_hue[left_mask])
+    right_mean = np.mean(smoothed_hue[right_mask])
+    asym = abs(left_mean - right_mean)
+    
+    return asym, left_mean,right_mean,left_mask, right_mask
+
+
+def smooth_signal_sg(signal, window_length=31, polyorder=3):
+    """
+    Apply Savitzky-Golay filter to smooth the signal.
+    Args:
+        signal (array-like): 1D noisy time-series data.
+        window_length (int): Length of the filter window (must be odd).
+        polyorder (int): Polynomial order to fit.
+    Returns:
+        np.ndarray: Smoothed signal.
+    """
+    return savgol_filter(signal, window_length, polyorder)
+
+def smooth_signal_ma(signal, kernel_size=31):
+    """
+    Apply simple moving average to smooth the signal.
+    Args:
+        signal (array-like): 1D noisy time-series data.
+        kernel_size (int): Number of points to average.
+    Returns:
+        np.ndarray: Smoothed signal.
+    """
+    kernel = np.ones(kernel_size) / kernel_size
+    return np.convolve(signal, kernel, mode='same')
+
+
+
+def get_image_times(folder_path):
+    times = []
+
+    for filename in os.listdir(folder_path):
+        if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".tiff")):
+            continue
+
+        full_path = os.path.join(folder_path, filename)
+
+        # Windows: true creation time in seconds since epoch
+        ctime = os.path.getmtime(full_path)
+
+        # Convert timestamp to datetime
+        dt = datetime.datetime.fromtimestamp(ctime)
+
+        # Convert to seconds of day: HH*3600 + MM*60 + SS + microseconds
+        seconds = (
+            dt.hour * 3600 +
+            dt.minute * 60 +
+            dt.second +
+            dt.microsecond / 1e6
+        )
+
+        times.append(seconds)
+
+    # Sort in case filenames are not in chronological order
+    times.sort()
+
+    # Rescale to start at zero
+    if times:
+        base = times[0]
+        times = [t - base for t in times]
+
+    return times
+
+
 
 
 
