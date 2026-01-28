@@ -2037,6 +2037,146 @@ def get_image_times(folder_path):
 
     return times
 
+def diameter_average_profile(image, center):
+    """
+    Compute a diameter intensity profile based on radial averaging.
+
+    Parameters
+    ----------
+    image : 2D numpy array
+    center : (cx, cy)
+
+    Returns
+    -------
+    dist : 1D numpy array, from -R to +R (pixels)
+    profile : 1D numpy array, average intensity at that distance
+    """
+    h, w = image.shape
+    cx, cy = center
+
+    # coordinate grid
+    y = np.arange(h)
+    x = np.arange(w)
+    xx, yy = np.meshgrid(x, y)
+
+    # radial distance
+    r = np.sqrt((xx - cx)**2 + (yy - cy)**2)
+    r_int = r.astype(int)
+
+    # max radius that fits inside the image
+    Rmax = r_int.max()
+
+    radial_sum = np.zeros(Rmax + 1, dtype=float)
+    radial_count = np.zeros(Rmax + 1, dtype=float)
+
+    # accumulate intensities per shell
+    for i in range(h):
+        for j in range(w):
+            ri = r_int[i, j]
+            radial_sum[ri] += image[i, j]
+            radial_count[ri] += 1
+
+    # mean intensity per radius
+    radial_mean = radial_sum / np.maximum(radial_count, 1)
+
+    # build diameter: [-R ... 0 ... +R]
+    dist_pos = np.arange(0, Rmax + 1)
+    dist_neg = -dist_pos[1:][::-1]  # skip zero to avoid duplication
+
+    dist = np.concatenate([dist_neg, dist_pos])
+    profile = np.concatenate([radial_mean[1:][::-1], radial_mean])
+
+    return dist, profile
+
+def mov_to_rgb_frames(path):
+    """
+    Load a .mov video and return list of RGB frames as NumPy arrays.
+    
+    Returns:
+        List of (H, W, 3) uint8 RGB images.
+    """
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video file: {path}")
+
+    frames = []
+
+    while True:
+        ret, bgr_frame = cap.read()
+        if not ret:
+            break
+        
+        # Convert BGR (OpenCV default) → RGB
+        rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
+        frames.append(rgb_frame)
+
+    cap.release()
+    return frames
+
+def plot_and_save_images(
+    images,
+    X_c,
+    Y_c,
+    x_fit,
+    y_fit,
+    start_idx,
+    end_idx,
+    step=1,
+    output_folder="output_images",
+    save_movie=False
+):
+    """
+    images       : list/array of images to display
+    X_c, Y_c     : lists/arrays of scatter coordinates
+    x_fit, y_fit : lists/arrays of fit curves to plot
+    start_idx    : starting image index (inclusive)
+    end_idx      : final image index (exclusive)
+    step         : interval between saved frames (e.g. 10 means save 1 out of 10)
+    output_folder: directory to save images
+    save_movie   : bool, if False no images are saved
+    """
+
+    # --- Create folder if needed ---
+    if save_movie:
+        os.makedirs(output_folder, exist_ok=True)
+
+    # --- Loop through requested frames ---
+    for i in range(start_idx, min(end_idx, len(images)), step):
+
+        h, w = images[i].shape[:2]
+       
+        
+
+        plt.figure()
+        plt.scatter(X_c[i], Y_c[i], edgecolor='white',color='orange', marker='o', s=300, label='Trajectory')
+        plt.scatter(np.mean(x_fit[i]), np.mean(y_fit[i]), color='gold', marker='X', s=200)
+        plt.imshow(images[i], origin='lower')
+        plt.plot(x_fit[i], y_fit[i], color='gold', linestyle='--')
+        plt.xlim(0, w)
+        plt.ylim(0, h)
+        plt.xticks([])
+        plt.yticks([])
+
+        # --- Save image if enabled ---
+        if save_movie:
+            save_path = os.path.join(output_folder, f"img_{i}.png")
+            plt.savefig(save_path, dpi=300, bbox_inches="tight")
+
+        plt.close()
+
+
+
+def analyze_center_of_mass(x,y,plot=True):
+
+    # Compute center of mass
+    x_mean = np.mean(x)
+    y_mean = np.mean(y)
+    
+    # Compute distances to center
+    distances = np.sqrt((x - x_mean)**2 + (y - y_mean)**2)
+
+        
+    return x_mean, y_mean, distances
 
 
 
